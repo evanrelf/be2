@@ -4,8 +4,10 @@ use clap::Parser as _;
 struct Args {}
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let _args = Args::parse();
 
     println!("Hello, world!");
+
+    Ok(())
 }
