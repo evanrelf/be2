@@ -7,7 +7,9 @@ struct Args {}
 async fn main() -> anyhow::Result<()> {
     let _args = Args::parse();
 
-    println!("Hello, world!");
+    tracing_subscriber::fmt::init();
+
+    tracing::info!("Hello, world!");
 
     Ok(())
 }
