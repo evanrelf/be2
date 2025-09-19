@@ -1,6 +1,11 @@
 use camino::Utf8PathBuf;
 use clap::Parser as _;
 use etcetera::app_strategy::{AppStrategy as _, AppStrategyArgs, Xdg};
+use sqlx::{
+    SqlitePool,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
+};
+use std::str::FromStr as _;
 use tokio::fs;
 
 #[derive(clap::Parser)]
@@ -21,6 +26,16 @@ async fn main() -> anyhow::Result<()> {
     let cache_dir = Utf8PathBuf::try_from(xdg.cache_dir())?;
 
     fs::create_dir_all(&cache_dir).await?;
+
+    let sqlite_path = cache_dir.join("cache.sqlite");
+
+    let _sqlite = SqlitePool::connect_with(
+        SqliteConnectOptions::from_str(&format!("sqlite://{sqlite_path}"))?
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal),
+    )
+    .await?;
 
     tracing::info!("Hello, world!");
 
