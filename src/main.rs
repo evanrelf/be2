@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(clippy::unused_async)]
+
 use camino::Utf8PathBuf;
 use clap::Parser as _;
 use etcetera::app_strategy::{AppStrategy as _, AppStrategyArgs, Xdg};
@@ -40,4 +43,63 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Hello, world!");
 
     Ok(())
+}
+
+// Build systems à la carte
+// (https://www.microsoft.com/en-us/research/wp-content/uploads/2018/03/build-systems.pdf)
+//
+// * Scheduling algorithm: Suspending (§4.1.3)
+// * Rebuilding strategy: Verifying or constructive traces (§4.2.2 or §4.2.3)
+//
+// Allows for dynamic/monadic dependencies. Suspending seems like the best fit for async Rust, and
+// therefore likely the most ergonomic to write.
+
+struct Key;
+
+struct Time;
+
+macro_rules! need {
+    ($expr:expr) => {{ $expr }};
+}
+
+struct Output<T> {
+    created: Key,
+    time: Time,
+    dependencies: Vec<Key>,
+    value: T,
+}
+
+#[derive(Debug)]
+enum Person {
+    Evan,
+}
+
+#[derive(Debug)]
+enum Language {
+    English,
+    Spanish,
+}
+
+async fn task_person() -> Person {
+    Person::Evan
+}
+
+async fn task_language(person: &Person) -> Language {
+    match person {
+        Person::Evan => Language::English,
+    }
+}
+
+async fn task_greeting() -> String {
+    let person = need!(task_person().await);
+    let language = task_language(&person).await;
+
+    let name = match person {
+        Person::Evan => "Evan",
+    };
+
+    match language {
+        Language::English => format!("Hello, {name}!"),
+        Language::Spanish => format!("¡Hola, {name}!"),
+    }
 }
