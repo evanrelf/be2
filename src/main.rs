@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     let xdg = Xdg::new(AppStrategyArgs {
         top_level_domain: String::from("com"),
         author: String::from("Evan Relf"),
-        app_name: String::from("Be"),
+        app_name: String::from("Be2"),
     })?;
 
     let cache_dir = Utf8PathBuf::try_from(xdg.cache_dir())?;
