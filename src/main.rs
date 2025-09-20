@@ -54,52 +54,114 @@ async fn main() -> anyhow::Result<()> {
 // Allows for dynamic/monadic dependencies. Suspending seems like the best fit for async Rust, and
 // therefore likely the most ergonomic to write.
 
-struct Key;
+/*
 
-struct Time;
+type Rebuilder c i k v = k -> v -> Task c k v -> Task (MonadState i) k v
 
-macro_rules! need {
-    ($expr:expr) => {{ $expr }};
+type Scheduler c i j k v = Rebuilder c j k v -> Build c i k v
+
+type Build c i k v = Tasks c k v -> k -> Store i k v -> Store i k v
+
+data Store i k v = Store { info :: i, values :: k -> v }
+
+type Tasks c k v = k -> Maybe (Task c k v)
+
+type Task c k v = forall f. c f => (k -> f v) -> f v
+
+shake :: (Ord k, Hashable v) => Build Monad (VT k v) k v
+shake = suspending vtRebuilder
+
+suspending :: forall i k v. Ord k => Scheduler Monad i i k v
+
+vtRebuilder :: (Eq k, Hashable v) => Rebuilder Monad (VT k v) k v
+
+newtype VT k v = VT [Trace k v (Hash v)]
+
+---
+
+-- A request
+data Key
+
+-- A response
+data Value
+
+type Rebuilder = Key -> Value -> Task -> Task'
+
+type Scheduler = Rebuilder -> Build
+
+type Build = (Key -> Maybe Task) -> Key -> Store -> Store
+
+data Store = Store { info :: [Trace], values :: Map Key Value }
+
+type Task = forall f. Monad f => (Key -> f Value) -> f Value
+
+type Task' = forall f. MonadState [Trace] f => (Key -> f Value) -> f Value
+
+data Trace = Trace
+  { key :: Key
+  , depends :: [(Key, Hash)]
+  , result  :: Hash
+  }
+
+*/
+
+use std::collections::HashMap;
+
+#[derive(PartialEq)]
+struct Hash(u64);
+
+struct Trace {
+    key: Key,
+    depends: HashMap<Key, Hash>,
+    result: Hash,
 }
 
-struct Output<T> {
-    created: Key,
-    time: Time,
-    dependencies: Vec<Key>,
-    value: T,
+#[derive(PartialEq)]
+enum Key {
+    Which(String),
+    ReadFile(Utf8PathBuf),
+    Format(Vec<u8>),
+    Lint(Vec<u8>),
 }
 
-#[derive(Debug)]
-enum Person {
-    Evan,
+enum Value {
+    Path(Utf8PathBuf),
+    Bytes(Vec<u8>),
 }
 
-#[derive(Debug)]
-enum Language {
-    English,
-    Spanish,
-}
-
-async fn task_person() -> Person {
-    Person::Evan
-}
-
-async fn task_language(person: &Person) -> Language {
-    match person {
-        Person::Evan => Language::English,
+impl Value {
+    fn hash(&self) -> Hash {
+        todo!()
     }
 }
 
-async fn task_greeting() -> String {
-    let person = need!(task_person().await);
-    let language = task_language(&person).await;
+#[derive(Default)]
+struct Store {
+    traces: Vec<Trace>,
+    values: HashMap<Key, Value>,
+}
 
-    let name = match person {
-        Person::Evan => "Evan",
-    };
+impl Store {
+    fn new() -> Store {
+        Self::default()
+    }
 
-    match language {
-        Language::English => format!("Hello, {name}!"),
-        Language::Spanish => format!("¡Hola, {name}!"),
+    // `recordVT`
+    fn trace(&mut self, trace: Trace) {
+        self.traces.push(trace);
+    }
+
+    // TODO: Should `fetch_hash` be implicitly available?
+    // `vertifyVT`
+    fn is_fresh(&self, key: &Key, hash: &Hash, fetch_hash: fn(&Key) -> Hash) -> bool {
+        self.traces.iter().any(|trace| {
+            if *key != trace.key || *hash != trace.result {
+                return false;
+            }
+            trace.depends.iter().all(|(dep_key, dep_hash)| {
+                let current_hash = fetch_hash(dep_key);
+                *dep_hash == current_hash
+            })
+        })
     }
 }
