@@ -30,14 +30,38 @@ async fn main() -> anyhow::Result<()> {
 
     fs::create_dir_all(&cache_dir).await?;
 
-    let sqlite_path = cache_dir.join("cache.sqlite");
+    let sqlite_path = cache_dir.join("store.sqlite");
 
-    let _sqlite = SqlitePool::connect_with(
+    let sqlite = SqlitePool::connect_with(
         SqliteConnectOptions::from_str(&format!("sqlite://{sqlite_path}"))?
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal),
     )
+    .await?;
+
+    sqlx::query(
+        "
+        create table if not exists values (
+            key blob primary key,
+            value blob not null
+        ) strict;
+
+        create table if not exists traces (
+            id int primary key,
+            key blob not null,
+            result blob not null
+        ) strict;
+
+        create table if not exists trace_deps (
+            trace_id int not null references traces,
+            key blob not null,
+            value int not null,
+            unique (trace_id, key, value)
+        ) strict;
+        ",
+    )
+    .execute(&sqlite)
     .await?;
 
     tracing::info!("Hello, world!");
