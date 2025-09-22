@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #![allow(clippy::unused_async)]
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use clap::Parser as _;
 use etcetera::app_strategy::{AppStrategy as _, AppStrategyArgs, Xdg};
 use sqlx::{
@@ -12,11 +12,20 @@ use std::str::FromStr as _;
 use tokio::fs;
 
 #[derive(clap::Parser)]
-struct Args {}
+struct Args {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(clap::Subcommand)]
+enum Command {
+    Lint,
+    Clean,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _args = Args::parse();
+    let args = Args::parse();
 
     tracing_subscriber::fmt::init();
 
@@ -32,8 +41,25 @@ async fn main() -> anyhow::Result<()> {
 
     let sqlite_path = cache_dir.join("store.sqlite");
 
+    match args.command {
+        Command::Lint => {
+            let _sqlite = sqlite_init(&sqlite_path).await?;
+
+            tracing::info!("totally linting right now...");
+        }
+        Command::Clean => {
+            if fs::try_exists(&sqlite_path).await? {
+                fs::remove_file(&sqlite_path).await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn sqlite_init(path: &Utf8Path) -> anyhow::Result<SqlitePool> {
     let sqlite = SqlitePool::connect_with(
-        SqliteConnectOptions::from_str(&format!("sqlite://{sqlite_path}"))?
+        SqliteConnectOptions::from_str(&format!("sqlite://{path}"))?
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal),
@@ -42,18 +68,18 @@ async fn main() -> anyhow::Result<()> {
 
     sqlx::query(
         "
-        create table if not exists values (
+        create table if not exists build_products (
             key blob primary key,
             value blob not null
         ) strict;
 
-        create table if not exists traces (
+        create table if not exists build_traces (
             id int primary key,
             key blob not null,
-            result blob not null
+            value blob not null
         ) strict;
 
-        create table if not exists trace_deps (
+        create table if not exists build_trace_deps (
             trace_id int not null references traces,
             key blob not null,
             value int not null,
@@ -64,10 +90,12 @@ async fn main() -> anyhow::Result<()> {
     .execute(&sqlite)
     .await?;
 
-    tracing::info!("Hello, world!");
-
-    Ok(())
+    Ok(sqlite)
 }
+
+// Represent changes to build system code by making all builds depend on binary as input!
+
+// Need to represent volatile (i.e. uncached) tasks, such as querying compiler version.
 
 // Build systems à la carte
 // (https://www.microsoft.com/en-us/research/wp-content/uploads/2018/03/build-systems.pdf)
