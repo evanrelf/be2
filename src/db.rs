@@ -80,7 +80,6 @@ pub async fn select_products(db: &SqlitePool) -> anyhow::Result<HashMap<Key, Val
     Ok(products)
 }
 
-// TODO: Handle when primary key constraint is violated on insert. Overwrite existing entry?
 pub async fn insert_product(db: &SqlitePool, product: &Product) -> anyhow::Result<()> {
     sqlx::query("insert into products (key, value) values ($1, $2)")
         .bind(&product.key.0)
@@ -127,7 +126,6 @@ pub async fn select_traces(db: &SqlitePool) -> anyhow::Result<Vec<Trace>> {
     Ok(traces)
 }
 
-// TODO: Handle when unique constraint is violated on insert. Do nothing?
 pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> anyhow::Result<()> {
     let mut tx = db.begin().await?;
 
