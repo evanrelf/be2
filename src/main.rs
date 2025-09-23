@@ -104,7 +104,6 @@ enum Key {
     Which(String),
     ReadFile(Utf8PathBuf),
     Format(Vec<u8>),
-    Lint(Vec<u8>),
 }
 
 #[derive(Deserialize, Serialize)]
@@ -348,26 +347,15 @@ mod tests {
                 );
                 products
             },
-            traces: vec![
-                Trace {
-                    key: Key::Format(Vec::from(b"fn main() { }")),
-                    value: Value::Bytes(Vec::from(b"fn main() {}\n")),
-                    deps: {
-                        let mut deps = HashMap::new();
-                        deps.insert(Key::Which(String::from("rustfmt")), Hash(12345));
-                        deps
-                    },
+            traces: vec![Trace {
+                key: Key::Format(Vec::from(b"fn main() { }")),
+                value: Value::Bytes(Vec::from(b"fn main() {}\n")),
+                deps: {
+                    let mut deps = HashMap::new();
+                    deps.insert(Key::Which(String::from("rustfmt")), Hash(12345));
+                    deps
                 },
-                Trace {
-                    key: Key::Lint(b"fn main() {}".to_vec()),
-                    value: Value::Bytes(Vec::new()),
-                    deps: {
-                        let mut deps = HashMap::new();
-                        deps.insert(Key::Which(String::from("clippy")), Hash(67890));
-                        deps
-                    },
-                },
-            ],
+            }],
         };
 
         insert_store(&sqlite, original_store).await?;
@@ -397,18 +385,6 @@ mod tests {
             format_trace
                 .deps
                 .contains_key(&Key::Which(String::from("rustfmt")))
-        );
-
-        let lint_trace = retrieved_store
-            .traces
-            .iter()
-            .find(|t| matches!(t.key, Key::Lint(_)))
-            .unwrap();
-        assert_eq!(lint_trace.deps.len(), 1);
-        assert!(
-            lint_trace
-                .deps
-                .contains_key(&Key::Which(String::from("clippy")))
         );
 
         Ok(())
