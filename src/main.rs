@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 #![allow(clippy::unused_async)]
 
+mod db;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use clap::Parser as _;
 use etcetera::app_strategy::{AppStrategy as _, AppStrategyArgs, Xdg};
