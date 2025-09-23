@@ -139,6 +139,8 @@ async fn select_store(sqlite: &SqlitePool) -> anyhow::Result<Store> {
     Ok(Store { products, traces })
 }
 
+// TODO: Should this handle merging in-memory store with database store? Or should it assume an
+// empty database, and we leave merging / flushing changes to another function?
 async fn insert_store(sqlite: &SqlitePool, store: Store) -> anyhow::Result<()> {
     for (key, value) in store.products {
         let product = Product { key, value };
@@ -169,6 +171,7 @@ async fn select_products(sqlite: &SqlitePool) -> anyhow::Result<HashMap<Key, Val
     Ok(products)
 }
 
+// TODO: Handle when primary key constraint is violated on insert. Overwrite existing entry?
 async fn insert_product(sqlite: &SqlitePool, product: &Product) -> anyhow::Result<()> {
     let key = serde_json::to_vec(&product.key)?;
     let value = serde_json::to_vec(&product.value)?;
@@ -218,6 +221,7 @@ async fn select_traces(sqlite: &SqlitePool) -> anyhow::Result<Vec<Trace>> {
     Ok(traces)
 }
 
+// TODO: Handle when unique constraint is violated on insert. Do nothing?
 async fn insert_trace(sqlite: &SqlitePool, trace: &Trace) -> anyhow::Result<()> {
     let key = serde_json::to_vec(&trace.key)?;
     let value = serde_json::to_vec(&trace.value)?;
