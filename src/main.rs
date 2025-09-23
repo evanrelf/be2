@@ -43,7 +43,8 @@ async fn main() -> anyhow::Result<()> {
 
     match args.command {
         Command::Lint => {
-            let _sqlite = sqlite_init(&sqlite_path).await?;
+            let sqlite = sqlite_connect(&sqlite_path).await?;
+            sqlite_migrate(&sqlite).await?;
 
             tracing::info!("totally linting right now...");
         }
@@ -57,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn sqlite_init(path: &Utf8Path) -> anyhow::Result<SqlitePool> {
+async fn sqlite_connect(path: &Utf8Path) -> anyhow::Result<SqlitePool> {
     let sqlite = SqlitePool::connect_with(
         SqliteConnectOptions::from_str(&format!("sqlite://{path}"))?
             .create_if_missing(true)
@@ -66,6 +67,10 @@ async fn sqlite_init(path: &Utf8Path) -> anyhow::Result<SqlitePool> {
     )
     .await?;
 
+    Ok(sqlite)
+}
+
+async fn sqlite_migrate(sqlite: &SqlitePool) -> anyhow::Result<()> {
     sqlx::query(
         "
         create table if not exists build_products (
@@ -87,10 +92,10 @@ async fn sqlite_init(path: &Utf8Path) -> anyhow::Result<SqlitePool> {
         ) strict;
         ",
     )
-    .execute(&sqlite)
+    .execute(sqlite)
     .await?;
 
-    Ok(sqlite)
+    Ok(())
 }
 
 // Represent changes to build system code by making all builds depend on binary as input!
