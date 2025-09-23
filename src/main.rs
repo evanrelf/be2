@@ -8,7 +8,7 @@ use sqlx::{
     SqlitePool,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
 };
-use std::str::FromStr as _;
+use std::{collections::HashMap, str::FromStr as _};
 use tokio::fs;
 
 #[derive(clap::Parser)]
@@ -98,6 +98,65 @@ async fn sqlite_migrate(sqlite: &SqlitePool) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[derive(PartialEq)]
+struct Hash(u64);
+
+struct Trace {
+    key: Key,
+    depends: HashMap<Key, Hash>,
+    result: Hash,
+}
+
+#[derive(PartialEq)]
+enum Key {
+    Which(String),
+    ReadFile(Utf8PathBuf),
+    Format(Vec<u8>),
+    Lint(Vec<u8>),
+}
+
+enum Value {
+    Path(Utf8PathBuf),
+    Bytes(Vec<u8>),
+}
+
+impl Value {
+    fn hash(&self) -> Hash {
+        todo!()
+    }
+}
+
+#[derive(Default)]
+struct Store {
+    traces: Vec<Trace>,
+    values: HashMap<Key, Value>,
+}
+
+impl Store {
+    fn new() -> Store {
+        Self::default()
+    }
+
+    // `recordVT`
+    fn trace(&mut self, trace: Trace) {
+        self.traces.push(trace);
+    }
+
+    // TODO: Should `fetch_hash` be implicitly available?
+    // `vertifyVT`
+    fn is_fresh(&self, key: &Key, hash: &Hash, fetch_hash: fn(&Key) -> Hash) -> bool {
+        self.traces.iter().any(|trace| {
+            if *key != trace.key || *hash != trace.result {
+                return false;
+            }
+            trace.depends.iter().all(|(dep_key, dep_hash)| {
+                let current_hash = fetch_hash(dep_key);
+                *dep_hash == current_hash
+            })
+        })
+    }
+}
+
 // Represent changes to build system code by making all builds depend on binary as input!
 
 // Need to represent volatile (i.e. uncached) tasks, such as querying compiler version.
@@ -161,64 +220,3 @@ data Trace = Trace
   }
 
 */
-
-use std::collections::HashMap;
-
-#[derive(PartialEq)]
-struct Hash(u64);
-
-struct Trace {
-    key: Key,
-    depends: HashMap<Key, Hash>,
-    result: Hash,
-}
-
-#[derive(PartialEq)]
-enum Key {
-    Which(String),
-    ReadFile(Utf8PathBuf),
-    Format(Vec<u8>),
-    Lint(Vec<u8>),
-}
-
-enum Value {
-    Path(Utf8PathBuf),
-    Bytes(Vec<u8>),
-}
-
-impl Value {
-    fn hash(&self) -> Hash {
-        todo!()
-    }
-}
-
-#[derive(Default)]
-struct Store {
-    traces: Vec<Trace>,
-    values: HashMap<Key, Value>,
-}
-
-impl Store {
-    fn new() -> Store {
-        Self::default()
-    }
-
-    // `recordVT`
-    fn trace(&mut self, trace: Trace) {
-        self.traces.push(trace);
-    }
-
-    // TODO: Should `fetch_hash` be implicitly available?
-    // `vertifyVT`
-    fn is_fresh(&self, key: &Key, hash: &Hash, fetch_hash: fn(&Key) -> Hash) -> bool {
-        self.traces.iter().any(|trace| {
-            if *key != trace.key || *hash != trace.result {
-                return false;
-            }
-            trace.depends.iter().all(|(dep_key, dep_hash)| {
-                let current_hash = fetch_hash(dep_key);
-                *dep_hash == current_hash
-            })
-        })
-    }
-}
