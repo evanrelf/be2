@@ -112,11 +112,12 @@ pub async fn select_traces(db: &SqlitePool) -> anyhow::Result<Vec<Trace>> {
 
         for trace_deps_row in trace_deps_rows {
             let key = Key(trace_deps_row.get(0));
-            // TODO: `blob` -> `u64`
-            // let value: Vec<u8> = trace_deps_row.get(1);
-            // let value: [u8; 8] = value.try_into()?;
-            // let value = Hash(u64::from_le_bytes(value));
-            let value = Hash(42);
+            let value: Vec<u8> = trace_deps_row.get(1);
+            let value: [u8; 8] = match value.try_into() {
+                Ok(value) => value,
+                Err(bytes) => anyhow::bail!("expected 8 bytes, found {} bytes", bytes.len()),
+            };
+            let value = Hash(u64::from_le_bytes(value));
             deps.insert(key, value);
         }
 
@@ -137,9 +138,7 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> anyhow::Result<()> 
             .await?;
 
     for (key, value_hash) in &trace.deps {
-        // TODO: `u64` -> `blob`
-        let _ = value_hash;
-        let value_hash: Vec<u8> = vec![0x42];
+        let value_hash = &value_hash.0.to_le_bytes()[..];
 
         sqlx::query("insert into trace_deps (trace_id, key, value_hash) values ($1, $2, $3)")
             .bind(trace_id)
