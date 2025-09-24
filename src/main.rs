@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+mod build;
 mod db;
 
 use camino::Utf8PathBuf;
@@ -52,17 +53,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-enum Key {
-    Which(String),
-    ReadFile(Utf8PathBuf),
-    Format(Vec<u8>),
-}
-
-enum Value {
-    Path(Utf8PathBuf),
-    Bytes(Vec<u8>),
 }
 
 // Represent changes to build system code by making all builds depend on binary as input!
