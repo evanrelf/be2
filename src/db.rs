@@ -61,6 +61,15 @@ pub struct Trace {
     pub deps: HashMap<Key, Hash>,
 }
 
+pub async fn fetch_product(db: &SqlitePool, key: &Key) -> anyhow::Result<Option<Value>> {
+    let bytes = sqlx::query_scalar("select value from products where key = $1")
+        .bind(&key.0)
+        .fetch_optional(db)
+        .await?;
+
+    Ok(bytes.map(Value))
+}
+
 pub async fn fetch_products(db: &SqlitePool) -> anyhow::Result<HashMap<Key, Value>> {
     let rows = sqlx::query("select key, value from products")
         .fetch_all(db)
