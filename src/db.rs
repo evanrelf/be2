@@ -61,7 +61,7 @@ pub struct Trace {
     pub deps: HashMap<Key, Hash>,
 }
 
-pub async fn select_products(db: &SqlitePool) -> anyhow::Result<HashMap<Key, Value>> {
+pub async fn fetch_products(db: &SqlitePool) -> anyhow::Result<HashMap<Key, Value>> {
     let rows = sqlx::query("select key, value from products")
         .fetch_all(db)
         .await?;
@@ -88,7 +88,7 @@ pub async fn insert_product(db: &SqlitePool, key: &Key, value: &Value) -> anyhow
     Ok(())
 }
 
-pub async fn select_traces(db: &SqlitePool) -> anyhow::Result<Vec<Trace>> {
+pub async fn fetch_traces(db: &SqlitePool) -> anyhow::Result<Vec<Trace>> {
     let trace_rows = sqlx::query("select id, key, value from traces")
         .fetch_all(db)
         .await?;
@@ -168,7 +168,7 @@ mod tests {
         let mut expected_products = HashMap::new();
         expected_products.insert(key, value);
 
-        let actual_products = select_products(&db).await?;
+        let actual_products = fetch_products(&db).await?;
 
         assert_eq!(expected_products, actual_products);
 
@@ -189,7 +189,7 @@ mod tests {
 
         let expected_traces = vec![trace];
 
-        let actual_traces = select_traces(&db).await?;
+        let actual_traces = fetch_traces(&db).await?;
 
         assert_eq!(expected_traces, actual_traces);
 
