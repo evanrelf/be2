@@ -45,11 +45,13 @@ pub async fn migrate(db: &SqlitePool) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Key(pub Vec<u8>);
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct Value(pub Vec<u8>);
 
+#[derive(Debug, PartialEq)]
 pub struct Hash(pub u64);
 
 pub struct Product {
@@ -57,6 +59,7 @@ pub struct Product {
     pub value: Value,
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Trace {
     pub key: Key,
     pub value: Value,
@@ -151,4 +154,54 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> anyhow::Result<()> 
     tx.commit().await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_product_roundtrip() -> anyhow::Result<()> {
+        let db = SqlitePool::connect(":memory:").await?;
+        migrate(&db).await?;
+
+        let key = Key(Vec::from(b"password"));
+        let value = Value(Vec::from(b"hunter2"));
+        let product = Product {
+            key: key.clone(),
+            value: value.clone(),
+        };
+
+        insert_product(&db, &product).await?;
+
+        let mut expected_products = HashMap::new();
+        expected_products.insert(key, value);
+
+        let actual_products = select_products(&db).await?;
+
+        assert_eq!(expected_products, actual_products);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_trace_roundtrip() -> anyhow::Result<()> {
+        let db = SqlitePool::connect(":memory:").await?;
+        migrate(&db).await?;
+
+        let key = Key(Vec::from(b"password"));
+        let value = Value(Vec::from(b"hunter2"));
+        let deps = HashMap::new();
+        let trace = Trace { key, value, deps };
+
+        insert_trace(&db, &trace).await?;
+
+        let expected_traces = vec![trace];
+
+        let actual_traces = select_traces(&db).await?;
+
+        assert_eq!(expected_traces, actual_traces);
+
+        Ok(())
+    }
 }
