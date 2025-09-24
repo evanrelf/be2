@@ -31,6 +31,7 @@ struct Trace {
 
 #[derive(Default)]
 struct BuildCtx {
+    debug_task_counter: usize,
     products: HashMap<Key, Value>,
     traces: Vec<Trace>,
 }
@@ -41,6 +42,9 @@ impl BuildCtx {
     }
 
     async fn fetch(&mut self, key: &Key) -> anyhow::Result<Value> {
+        if let Some(value) = self.products.get(key) {
+            return Ok(value.clone());
+        }
         let value = match key {
             Key::Which(name) => {
                 let mut ctx = TaskCtx::from(&mut *self);
@@ -55,6 +59,7 @@ impl BuildCtx {
                 Value::Bytes(bytes)
             }
         };
+        self.debug_task_counter += 1;
         self.products.insert(key.clone(), value.clone());
         Ok(value)
     }
@@ -153,7 +158,7 @@ async fn task_read_file(_ctx: &mut TaskCtx<'_>, path: &Utf8Path) -> anyhow::Resu
 #[expect(clippy::unused_async)]
 async fn task_read_file_stub(_ctx: &mut TaskCtx<'_>, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
     let bytes = match path.as_str() {
-        "/files" => Vec::from(b"/files/a\n/files/b\n"),
+        "/files" => Vec::from(b"/files/a\n/files/a\n/files/b\n"),
         "/files/a" => Vec::from(b"AAAA\n"),
         "/files/b" => Vec::from(b"BBBB\n"),
         "/dev/null" => Vec::new(),
@@ -191,11 +196,11 @@ mod tests {
         let mut task_ctx = TaskCtx::from(&mut build_ctx);
         let path = Utf8PathBuf::from("/files");
         let result = concat(&mut task_ctx, &path).await?;
-        assert_eq!(&result, b"AAAA\nBBBB\n");
+        assert_eq!(&result, b"AAAA\nAAAA\nBBBB\n");
         let mut expected_products = HashMap::new();
         expected_products.insert(
             Key::ReadFile(Utf8PathBuf::from("/files")),
-            Value::Bytes(Vec::from(b"/files/a\n/files/b\n")),
+            Value::Bytes(Vec::from(b"/files/a\n/files/a\n/files/b\n")),
         );
         expected_products.insert(
             Key::ReadFile(Utf8PathBuf::from("/files/a")),
@@ -206,6 +211,8 @@ mod tests {
             Value::Bytes(Vec::from(b"BBBB\n")),
         );
         assert_eq!(build_ctx.products, expected_products);
+        // `/files/a` should only be read from "disk" once, then read from the in-memory cache.
+        assert_eq!(build_ctx.debug_task_counter, 3);
         Ok(())
     }
 }
