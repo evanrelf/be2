@@ -1,5 +1,9 @@
 use camino::{Utf8Path, Utf8PathBuf};
-use std::{collections::HashMap, str};
+use std::{
+    collections::HashMap,
+    str,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 use tokio::{fs, process::Command};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -39,7 +43,7 @@ struct Store {
 /// etc.
 #[derive(Default)]
 struct BuildCtx {
-    debug_task_counter: usize,
+    debug_task_counter: AtomicUsize,
     store: Store,
 }
 
@@ -50,25 +54,25 @@ impl BuildCtx {
 
     /// Get the value associated with the given key. Either retrieves a cached value from the cache,
     /// or kicks off a task to produce the value.
-    async fn fetch(&mut self, key: &Key) -> anyhow::Result<Value> {
+    async fn fetch(&self, key: &Key) -> anyhow::Result<Value> {
         if let Some(value) = self.store.products.pin().get(key) {
             return Ok(value.clone());
         }
         let value = match key {
             Key::Which(name) => {
-                let mut ctx = TaskCtx::from(&mut *self);
-                // let path = task_which(&mut ctx, name).await?;
+                let mut ctx = TaskCtx::from(self);
+                // let path = task_which(&ctx, name).await?;
                 let path = task_which_stub(&mut ctx, name).await?;
                 Value::Path(path)
             }
             Key::ReadFile(path) => {
-                let mut ctx = TaskCtx::from(&mut *self);
-                // let bytes = task_read_file(&mut ctx, path).await?;
+                let mut ctx = TaskCtx::from(self);
+                // let bytes = task_read_file(&ctx, path).await?;
                 let bytes = task_read_file_stub(&mut ctx, path).await?;
                 Value::Bytes(bytes)
             }
         };
-        self.debug_task_counter += 1;
+        self.debug_task_counter.fetch_add(1, Ordering::SeqCst);
         self.store.products.pin().insert(key.clone(), value.clone());
         Ok(value)
     }
@@ -91,7 +95,7 @@ impl BuildCtx {
     }
 
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#recordCT
-    fn record(&mut self) {
+    fn record(&self) {
         todo!()
     }
 
@@ -105,7 +109,7 @@ impl BuildCtx {
 /// Local context used for the duration of a task. Extends the global build context, tracking a
 /// task's dynamic dependencies.
 struct TaskCtx<'a> {
-    build_ctx: &'a mut BuildCtx,
+    build_ctx: &'a BuildCtx,
     deps: HashMap<Key, Value>,
 }
 
@@ -118,8 +122,8 @@ impl TaskCtx<'_> {
     }
 }
 
-impl<'a> From<&'a mut BuildCtx> for TaskCtx<'a> {
-    fn from(build_ctx: &'a mut BuildCtx) -> Self {
+impl<'a> From<&'a BuildCtx> for TaskCtx<'a> {
+    fn from(build_ctx: &'a BuildCtx) -> Self {
         Self {
             build_ctx,
             deps: HashMap::new(),
@@ -223,8 +227,8 @@ mod tests {
 
     #[tokio::test]
     async fn test() -> anyhow::Result<()> {
-        let mut build_ctx = BuildCtx::new();
-        let mut task_ctx = TaskCtx::from(&mut build_ctx);
+        let build_ctx = BuildCtx::new();
+        let mut task_ctx = TaskCtx::from(&build_ctx);
         let path = Utf8PathBuf::from("/files");
         let result = concat(&mut task_ctx, &path).await?;
         assert_eq!(&result, b"AAAA\nAAAA\nBBBB\n");
@@ -244,7 +248,7 @@ mod tests {
         assert_eq!(build_ctx.store.products, expected_products);
         // Should match number of files read, not number of file reads; subsequent reads should be
         // cached.
-        assert_eq!(build_ctx.debug_task_counter, 3);
+        assert_eq!(build_ctx.debug_task_counter.load(Ordering::SeqCst), 3);
         Ok(())
     }
 }
