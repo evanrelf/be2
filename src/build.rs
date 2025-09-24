@@ -29,13 +29,18 @@ struct Trace {
     deps: HashMap<Key, Hash>,
 }
 
+#[derive(Default)]
+struct Store {
+    products: HashMap<Key, Value>,
+    traces: Vec<Trace>,
+}
+
 /// Global context used for the duration of the build. Stores build products, constructive traces,
 /// etc.
 #[derive(Default)]
 struct BuildCtx {
     debug_task_counter: usize,
-    products: HashMap<Key, Value>,
-    traces: Vec<Trace>,
+    store: Store,
 }
 
 impl BuildCtx {
@@ -46,7 +51,7 @@ impl BuildCtx {
     /// Get the value associated with the given key. Either retrieves a cached value from the cache,
     /// or kicks off a task to produce the value.
     async fn fetch(&mut self, key: &Key) -> anyhow::Result<Value> {
-        if let Some(value) = self.products.get(key) {
+        if let Some(value) = self.store.products.get(key) {
             return Ok(value.clone());
         }
         let value = match key {
@@ -64,19 +69,18 @@ impl BuildCtx {
             }
         };
         self.debug_task_counter += 1;
-        self.products.insert(key.clone(), value.clone());
+        self.store.products.insert(key.clone(), value.clone());
         Ok(value)
     }
 
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#isDirtyCT
     fn is_dirty(&self, key: &Key) -> bool {
-        for trace in &self.traces {
+        for trace in &self.store.traces {
             let key_match = trace.key == *key;
-            let value_match = trace.value == *self.products.get(key).unwrap();
-            let deps_match = trace
-                .deps
-                .iter()
-                .all(|(dep_key, dep_hash)| self.products.get(dep_key).unwrap().hash() == *dep_hash);
+            let value_match = trace.value == *self.store.products.get(key).unwrap();
+            let deps_match = trace.deps.iter().all(|(dep_key, dep_hash)| {
+                self.store.products.get(dep_key).unwrap().hash() == *dep_hash
+            });
             if key_match && value_match && deps_match {
                 return false;
             }
@@ -235,7 +239,7 @@ mod tests {
             Key::ReadFile(Utf8PathBuf::from("/files/b")),
             Value::Bytes(Vec::from(b"BBBB\n")),
         );
-        assert_eq!(build_ctx.products, expected_products);
+        assert_eq!(build_ctx.store.products, expected_products);
         // Should match number of files read, not number of file reads; subsequent reads should be
         // cached.
         assert_eq!(build_ctx.debug_task_counter, 3);
