@@ -29,6 +29,8 @@ struct Trace {
     deps: HashMap<Key, Hash>,
 }
 
+/// Global context used for the duration of the build. Stores build products, constructive traces,
+/// etc.
 #[derive(Default)]
 struct BuildCtx {
     debug_task_counter: usize,
@@ -41,6 +43,8 @@ impl BuildCtx {
         Self::default()
     }
 
+    /// Get the value associated with the given key. Either retrieves a cached value from the cache,
+    /// or kicks off a task to produce the value.
     async fn fetch(&mut self, key: &Key) -> anyhow::Result<Value> {
         if let Some(value) = self.products.get(key) {
             return Ok(value.clone());
@@ -64,6 +68,7 @@ impl BuildCtx {
         Ok(value)
     }
 
+    // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#isDirtyCT
     fn is_dirty(&self, key: &Key) -> bool {
         for trace in &self.traces {
             let key_match = trace.key == *key;
@@ -79,22 +84,27 @@ impl BuildCtx {
         true
     }
 
+    // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#recordCT
     fn record(&mut self) {
         todo!()
     }
 
+    // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#constructCT
     #[expect(clippy::unused_async)]
     async fn construct(&self, _key: &Key) -> anyhow::Result<Vec<Value>> {
         todo!()
     }
 }
 
+/// Local context used for the duration of a task. Extends the global build context, tracking a
+/// task's dynamic dependencies.
 struct TaskCtx<'a> {
     build_ctx: &'a mut BuildCtx,
     deps: HashMap<Key, Value>,
 }
 
 impl TaskCtx<'_> {
+    /// Thin wrapper around `BuildCtx::fetch`, adding task dependency tracking.
     async fn fetch(&mut self, key: &Key) -> anyhow::Result<Value> {
         let value = self.build_ctx.fetch(key).await?;
         self.deps.insert(key.clone(), value.clone());
@@ -211,7 +221,8 @@ mod tests {
             Value::Bytes(Vec::from(b"BBBB\n")),
         );
         assert_eq!(build_ctx.products, expected_products);
-        // `/files/a` should only be read from "disk" once, then read from the in-memory cache.
+        // Should match number of files read, not number of file reads; subsequent reads should be
+        // cached.
         assert_eq!(build_ctx.debug_task_counter, 3);
         Ok(())
     }
