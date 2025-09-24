@@ -54,11 +54,6 @@ pub struct Value(pub Vec<u8>);
 #[derive(Debug, PartialEq)]
 pub struct Hash(pub u64);
 
-pub struct Product {
-    pub key: Key,
-    pub value: Value,
-}
-
 #[derive(Debug, PartialEq)]
 pub struct Trace {
     pub key: Key,
@@ -83,10 +78,10 @@ pub async fn select_products(db: &SqlitePool) -> anyhow::Result<HashMap<Key, Val
     Ok(products)
 }
 
-pub async fn insert_product(db: &SqlitePool, product: &Product) -> anyhow::Result<()> {
+pub async fn insert_product(db: &SqlitePool, key: &Key, value: &Value) -> anyhow::Result<()> {
     sqlx::query("insert into products (key, value) values ($1, $2)")
-        .bind(&product.key.0)
-        .bind(&product.value.0)
+        .bind(&key.0)
+        .bind(&value.0)
         .execute(db)
         .await?;
 
@@ -167,12 +162,8 @@ mod tests {
 
         let key = Key(Vec::from(b"password"));
         let value = Value(Vec::from(b"hunter2"));
-        let product = Product {
-            key: key.clone(),
-            value: value.clone(),
-        };
 
-        insert_product(&db, &product).await?;
+        insert_product(&db, &key, &value).await?;
 
         let mut expected_products = HashMap::new();
         expected_products.insert(key, value);
