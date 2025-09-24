@@ -129,8 +129,6 @@ dependencies = [
  "camino",
  "clap",
  "etcetera 0.10.0",
- "serde",
- "serde_json",
  "sqlx",
  "tokio",
  "tracing",
