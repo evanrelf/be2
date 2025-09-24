@@ -153,7 +153,8 @@ async fn task_which_stub(_ctx: &mut TaskCtx<'_>, name: &str) -> anyhow::Result<U
     Ok(path)
 }
 
-async fn read_file(ctx: &mut TaskCtx<'_>, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+async fn read_file(ctx: &mut TaskCtx<'_>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
+    let path = path.as_ref();
     let Value::Bytes(bytes) = ctx.fetch(&Key::ReadFile(path.to_owned())).await? else {
         unreachable!()
     };
@@ -189,9 +190,23 @@ async fn concat(ctx: &mut TaskCtx<'_>, path: &Utf8Path) -> anyhow::Result<Vec<u8
     let mut output = Vec::new();
 
     for path in paths {
-        let bytes = read_file(ctx, &path).await?;
+        let bytes = read_file(ctx, path).await?;
         output.extend(bytes);
     }
+
+    // TODO: Make the context `Send` + `Sync` so tasks can run concurrently.
+
+    // let mut handles = Vec::with_capacity(paths.len());
+
+    // for path in paths {
+    //     let handle = tokio::spawn(read_file(ctx, path));
+    //     handles.push(handle);
+    // }
+
+    // for handle in handles {
+    //     let bytes = handle.await??;
+    //     output.extend(bytes);
+    // }
 
     Ok(output)
 }
