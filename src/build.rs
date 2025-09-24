@@ -31,8 +31,8 @@ struct Trace {
 
 #[derive(Default)]
 struct Store {
-    products: HashMap<Key, Value>,
-    traces: Vec<Trace>,
+    products: papaya::HashMap<Key, Value>,
+    traces: boxcar::Vec<Trace>,
 }
 
 /// Global context used for the duration of the build. Stores build products, constructive traces,
@@ -51,7 +51,7 @@ impl BuildCtx {
     /// Get the value associated with the given key. Either retrieves a cached value from the cache,
     /// or kicks off a task to produce the value.
     async fn fetch(&mut self, key: &Key) -> anyhow::Result<Value> {
-        if let Some(value) = self.store.products.get(key) {
+        if let Some(value) = self.store.products.pin().get(key) {
             return Ok(value.clone());
         }
         let value = match key {
@@ -69,18 +69,20 @@ impl BuildCtx {
             }
         };
         self.debug_task_counter += 1;
-        self.store.products.insert(key.clone(), value.clone());
+        self.store.products.pin().insert(key.clone(), value.clone());
         Ok(value)
     }
 
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#isDirtyCT
     fn is_dirty(&self, key: &Key) -> bool {
-        for trace in &self.store.traces {
+        let products = self.store.products.pin();
+        for (_index, trace) in &self.store.traces {
             let key_match = trace.key == *key;
-            let value_match = trace.value == *self.store.products.get(key).unwrap();
-            let deps_match = trace.deps.iter().all(|(dep_key, dep_hash)| {
-                self.store.products.get(dep_key).unwrap().hash() == *dep_hash
-            });
+            let value_match = trace.value == *products.get(key).unwrap();
+            let deps_match = trace
+                .deps
+                .iter()
+                .all(|(dep_key, dep_hash)| products.get(dep_key).unwrap().hash() == *dep_hash);
             if key_match && value_match && deps_match {
                 return false;
             }
@@ -226,16 +228,16 @@ mod tests {
         let path = Utf8PathBuf::from("/files");
         let result = concat(&mut task_ctx, &path).await?;
         assert_eq!(&result, b"AAAA\nAAAA\nBBBB\n");
-        let mut expected_products = HashMap::new();
-        expected_products.insert(
+        let expected_products = papaya::HashMap::new();
+        expected_products.pin().insert(
             Key::ReadFile(Utf8PathBuf::from("/files")),
             Value::Bytes(Vec::from(b"/files/a\n/files/a\n/files/b\n")),
         );
-        expected_products.insert(
+        expected_products.pin().insert(
             Key::ReadFile(Utf8PathBuf::from("/files/a")),
             Value::Bytes(Vec::from(b"AAAA\n")),
         );
-        expected_products.insert(
+        expected_products.pin().insert(
             Key::ReadFile(Utf8PathBuf::from("/files/b")),
             Value::Bytes(Vec::from(b"BBBB\n")),
         );
