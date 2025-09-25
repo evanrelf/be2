@@ -54,7 +54,7 @@ impl BuildCtx {
 
     /// Get the value associated with the given key. Either retrieves a previously cached value, or
     /// kicks off a task to produce the value.
-    async fn fetch(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
+    async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
         let debug_stub = true;
         if self.done.pin().contains(key) {
             let store = self.store.pin();
@@ -117,7 +117,7 @@ impl BuildCtx {
             }
             for (dep_key, dep_hash) in &trace.deps {
                 let ctx = Arc::clone(&self);
-                let hash = ctx.fetch(dep_key).await?.hash();
+                let hash = ctx.build(dep_key).await?.hash();
                 if *dep_hash != hash {
                     continue 'trace;
                 }
@@ -129,7 +129,7 @@ impl BuildCtx {
 }
 
 async fn which(ctx: Arc<BuildCtx>, name: &str) -> anyhow::Result<Utf8PathBuf> {
-    let Value::Path(bytes) = ctx.fetch(&Key::Which(name.to_owned())).await? else {
+    let Value::Path(bytes) = ctx.build(&Key::Which(name.to_owned())).await? else {
         unreachable!()
     };
     Ok(bytes)
@@ -162,7 +162,7 @@ async fn task_which_stub(_ctx: Arc<BuildCtx>, name: &str) -> anyhow::Result<Utf8
 
 async fn read_file(ctx: Arc<BuildCtx>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
     let path = path.as_ref();
-    let Value::Bytes(bytes) = ctx.fetch(&Key::ReadFile(path.to_owned())).await? else {
+    let Value::Bytes(bytes) = ctx.build(&Key::ReadFile(path.to_owned())).await? else {
         unreachable!()
     };
     Ok(bytes)
