@@ -12,7 +12,7 @@ enum Key {
     ReadFile(Utf8PathBuf),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Hash, PartialEq)]
 enum Value {
     Path(Utf8PathBuf),
     Bytes(Vec<u8>),
