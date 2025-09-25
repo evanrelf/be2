@@ -1,10 +1,12 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use std::{
     collections::HashMap,
+    hash::{Hash, Hasher},
     str,
     sync::atomic::{AtomicUsize, Ordering},
 };
 use tokio::{fs, process::Command};
+use twox_hash::XxHash3_64;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum Key {
@@ -19,18 +21,17 @@ enum Value {
 }
 
 impl Value {
-    fn hash(&self) -> Hash {
-        todo!()
+    fn hash(&self) -> u64 {
+        let mut hasher = XxHash3_64::default();
+        Hash::hash(&self, &mut hasher);
+        hasher.finish()
     }
 }
-
-#[derive(PartialEq)]
-struct Hash(u64);
 
 struct Trace {
     key: Key,
     value: Value,
-    deps: HashMap<Key, Hash>,
+    deps: HashMap<Key, u64>,
 }
 
 /// Global context used for the duration of the build. Stores build products, constructive traces,
@@ -51,7 +52,6 @@ impl BuildCtx {
     /// kicks off a task to produce the value.
     async fn fetch(&self, key: &Key) -> anyhow::Result<Value> {
         let debug_stub = true;
-
         if let Some(value) = self.store.pin().get(key) {
             return Ok(value.clone());
         }
@@ -96,14 +96,26 @@ impl BuildCtx {
     }
 
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#recordCT
-    fn record(&self) {
-        todo!()
+    fn record(&self, trace: Trace) {
+        self.traces.push(trace);
     }
 
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#constructCT
-    #[expect(clippy::unused_async)]
-    async fn construct(&self, _key: &Key) -> anyhow::Result<Vec<Value>> {
-        todo!()
+    async fn construct(&self, key: &Key) -> anyhow::Result<Vec<Value>> {
+        let mut values = Vec::new();
+        'trace: for (_index, trace) in &self.traces {
+            if trace.key != *key {
+                continue;
+            }
+            for (dep_key, dep_hash) in &trace.deps {
+                let hash = self.fetch(dep_key).await?.hash();
+                if *dep_hash != hash {
+                    continue 'trace;
+                }
+            }
+            values.push(trace.value.clone());
+        }
+        Ok(values)
     }
 }
 

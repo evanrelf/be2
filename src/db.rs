@@ -52,13 +52,10 @@ pub struct Key(pub Vec<u8>);
 pub struct Value(pub Vec<u8>);
 
 #[derive(Debug, PartialEq)]
-pub struct Hash(pub u64);
-
-#[derive(Debug, PartialEq)]
 pub struct Trace {
     pub key: Key,
     pub value: Value,
-    pub deps: HashMap<Key, Hash>,
+    pub deps: HashMap<Key, u64>,
 }
 
 pub async fn fetch(db: &SqlitePool, key: &Key) -> anyhow::Result<Option<Value>> {
@@ -124,7 +121,7 @@ pub async fn fetch_traces(db: &SqlitePool) -> anyhow::Result<Vec<Trace>> {
                 Ok(value) => value,
                 Err(bytes) => anyhow::bail!("expected 8 bytes, found {} bytes", bytes.len()),
             };
-            let value = Hash(u64::from_le_bytes(value));
+            let value = u64::from_le_bytes(value);
             deps.insert(key, value);
         }
 
@@ -145,7 +142,7 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> anyhow::Result<()> 
             .await?;
 
     for (key, value_hash) in &trace.deps {
-        let value_hash = &value_hash.0.to_le_bytes()[..];
+        let value_hash = &value_hash.to_le_bytes()[..];
 
         sqlx::query("insert into trace_deps (trace_id, key, value_hash) values ($1, $2, $3)")
             .bind(trace_id)
