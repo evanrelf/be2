@@ -39,6 +39,7 @@ struct Trace {
 #[derive(Default)]
 struct BuildCtx {
     debug_task_counter: AtomicUsize,
+    done: papaya::HashSet<Key>,
     store: papaya::HashMap<Key, Value>,
     traces: boxcar::Vec<Trace>,
 }
@@ -52,7 +53,9 @@ impl BuildCtx {
     /// kicks off a task to produce the value.
     async fn fetch(&self, key: &Key) -> anyhow::Result<Value> {
         let debug_stub = true;
-        if let Some(value) = self.store.pin().get(key) {
+        if self.done.pin().contains(key) {
+            let store = self.store.pin();
+            let value = store.get(key).unwrap();
             return Ok(value.clone());
         }
         let value = match key {
@@ -73,8 +76,9 @@ impl BuildCtx {
                 Value::Bytes(bytes)
             }
         };
-        self.debug_task_counter.fetch_add(1, Ordering::SeqCst);
+        self.done.pin().insert(key.clone());
         self.store.pin().insert(key.clone(), value.clone());
+        self.debug_task_counter.fetch_add(1, Ordering::SeqCst);
         Ok(value)
     }
 
