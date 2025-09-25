@@ -60,15 +60,13 @@ impl BuildCtx {
         }
         let value = match key {
             Key::Which(name) => {
-                let mut ctx = TaskCtx::from(self);
-                // let path = task_which(&ctx, name).await?;
-                let path = task_which_stub(&mut ctx, name).await?;
+                // let path = task_which(self, name).await?;
+                let path = task_which_stub(self, name).await?;
                 Value::Path(path)
             }
             Key::ReadFile(path) => {
-                let mut ctx = TaskCtx::from(self);
-                // let bytes = task_read_file(&ctx, path).await?;
-                let bytes = task_read_file_stub(&mut ctx, path).await?;
+                // let bytes = task_read_file(self, path).await?;
+                let bytes = task_read_file_stub(self, path).await?;
                 Value::Bytes(bytes)
             }
         };
@@ -106,39 +104,14 @@ impl BuildCtx {
     }
 }
 
-/// Local context used for the duration of a task. Extends the global build context, tracking a
-/// task's dynamic dependencies.
-struct TaskCtx<'a> {
-    build_ctx: &'a BuildCtx,
-    deps: HashMap<Key, Value>,
-}
-
-impl TaskCtx<'_> {
-    /// Thin wrapper around `BuildCtx::fetch`, adding task dependency tracking.
-    async fn fetch(&mut self, key: &Key) -> anyhow::Result<Value> {
-        let value = self.build_ctx.fetch(key).await?;
-        self.deps.insert(key.clone(), value.clone());
-        Ok(value)
-    }
-}
-
-impl<'a> From<&'a BuildCtx> for TaskCtx<'a> {
-    fn from(build_ctx: &'a BuildCtx) -> Self {
-        Self {
-            build_ctx,
-            deps: HashMap::new(),
-        }
-    }
-}
-
-async fn which(ctx: &mut TaskCtx<'_>, name: &str) -> anyhow::Result<Utf8PathBuf> {
+async fn which(ctx: &BuildCtx, name: &str) -> anyhow::Result<Utf8PathBuf> {
     let Value::Path(bytes) = ctx.fetch(&Key::Which(name.to_owned())).await? else {
         unreachable!()
     };
     Ok(bytes)
 }
 
-async fn task_which(_ctx: &mut TaskCtx<'_>, name: &str) -> anyhow::Result<Utf8PathBuf> {
+async fn task_which(_ctx: &BuildCtx, name: &str) -> anyhow::Result<Utf8PathBuf> {
     let output = Command::new("which").arg(name).output().await?;
 
     if !output.status.success() {
@@ -153,7 +126,7 @@ async fn task_which(_ctx: &mut TaskCtx<'_>, name: &str) -> anyhow::Result<Utf8Pa
 }
 
 #[expect(clippy::unused_async)]
-async fn task_which_stub(_ctx: &mut TaskCtx<'_>, name: &str) -> anyhow::Result<Utf8PathBuf> {
+async fn task_which_stub(_ctx: &BuildCtx, name: &str) -> anyhow::Result<Utf8PathBuf> {
     let path = match name {
         "sh" => Utf8PathBuf::from("/bin/sh"),
         "vim" => Utf8PathBuf::from("/usr/bin/vim"),
@@ -163,7 +136,7 @@ async fn task_which_stub(_ctx: &mut TaskCtx<'_>, name: &str) -> anyhow::Result<U
     Ok(path)
 }
 
-async fn read_file(ctx: &mut TaskCtx<'_>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
+async fn read_file(ctx: &BuildCtx, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
     let path = path.as_ref();
     let Value::Bytes(bytes) = ctx.fetch(&Key::ReadFile(path.to_owned())).await? else {
         unreachable!()
@@ -171,13 +144,13 @@ async fn read_file(ctx: &mut TaskCtx<'_>, path: impl AsRef<Utf8Path>) -> anyhow:
     Ok(bytes)
 }
 
-async fn task_read_file(_ctx: &mut TaskCtx<'_>, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+async fn task_read_file(_ctx: &BuildCtx, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
     let bytes = fs::read(&path).await?;
     Ok(bytes)
 }
 
 #[expect(clippy::unused_async)]
-async fn task_read_file_stub(_ctx: &mut TaskCtx<'_>, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+async fn task_read_file_stub(_ctx: &BuildCtx, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
     let bytes = match path.as_str() {
         "/files" => Vec::from(b"/files/a\n/files/a\n/files/b\n"),
         "/files/a" => Vec::from(b"AAAA\n"),
@@ -190,7 +163,7 @@ async fn task_read_file_stub(_ctx: &mut TaskCtx<'_>, path: &Utf8Path) -> anyhow:
 
 /// Given the path to a file containing newline separated paths, concatenate the contents of the
 /// files at those paths.
-async fn concat(ctx: &mut TaskCtx<'_>, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+async fn concat(ctx: &BuildCtx, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
     let paths = {
         let bytes = read_file(ctx, path).await?;
         let string = str::from_utf8(&bytes)?;
@@ -227,10 +200,9 @@ mod tests {
 
     #[tokio::test]
     async fn test() -> anyhow::Result<()> {
-        let build_ctx = BuildCtx::new();
-        let mut task_ctx = TaskCtx::from(&build_ctx);
+        let ctx = BuildCtx::new();
         let path = Utf8PathBuf::from("/files");
-        let result = concat(&mut task_ctx, &path).await?;
+        let result = concat(&ctx, &path).await?;
         assert_eq!(&result, b"AAAA\nAAAA\nBBBB\n");
         let expected_products = papaya::HashMap::new();
         expected_products.pin().insert(
@@ -245,10 +217,10 @@ mod tests {
             Key::ReadFile(Utf8PathBuf::from("/files/b")),
             Value::Bytes(Vec::from(b"BBBB\n")),
         );
-        assert_eq!(build_ctx.store.products, expected_products);
+        assert_eq!(ctx.store.products, expected_products);
         // Should match number of files read, not number of file reads; subsequent reads should be
         // cached.
-        assert_eq!(build_ctx.debug_task_counter.load(Ordering::SeqCst), 3);
+        assert_eq!(ctx.debug_task_counter.load(Ordering::SeqCst), 3);
         Ok(())
     }
 }
