@@ -3,7 +3,10 @@ use std::{
     collections::HashMap,
     hash::{Hash, Hasher},
     str,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 use tokio::{fs, process::Command};
 use twox_hash::XxHash3_64;
@@ -45,33 +48,34 @@ struct BuildCtx {
 }
 
 impl BuildCtx {
-    fn new() -> Self {
-        Self::default()
+    fn new() -> Arc<Self> {
+        Arc::new(Self::default())
     }
 
     /// Get the value associated with the given key. Either retrieves a previously cached value, or
     /// kicks off a task to produce the value.
-    async fn fetch(&self, key: &Key) -> anyhow::Result<Value> {
+    async fn fetch(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
         let debug_stub = true;
         if self.done.pin().contains(key) {
             let store = self.store.pin();
             let value = store.get(key).unwrap();
             return Ok(value.clone());
         }
+        let ctx = Arc::clone(&self);
         let value = match key {
             Key::Which(name) => {
                 let path = if debug_stub {
-                    task_which_stub(self, name).await?
+                    task_which_stub(ctx, name).await?
                 } else {
-                    task_which(self, name).await?
+                    task_which(ctx, name).await?
                 };
                 Value::Path(path)
             }
             Key::ReadFile(path) => {
                 let bytes = if debug_stub {
-                    task_read_file_stub(self, path).await?
+                    task_read_file_stub(ctx, path).await?
                 } else {
-                    task_read_file(self, path).await?
+                    task_read_file(ctx, path).await?
                 };
                 Value::Bytes(bytes)
             }
@@ -83,7 +87,7 @@ impl BuildCtx {
     }
 
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#isDirtyCT
-    fn is_dirty(&self, key: &Key) -> bool {
+    fn is_dirty(self: Arc<Self>, key: &Key) -> bool {
         let store = self.store.pin();
         for (_index, trace) in &self.traces {
             let key_match = trace.key == *key;
@@ -100,19 +104,20 @@ impl BuildCtx {
     }
 
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#recordCT
-    fn record(&self, trace: Trace) {
+    fn record(self: Arc<Self>, trace: Trace) {
         self.traces.push(trace);
     }
 
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#constructCT
-    async fn construct(&self, key: &Key) -> anyhow::Result<Vec<Value>> {
+    async fn construct(self: Arc<Self>, key: &Key) -> anyhow::Result<Vec<Value>> {
         let mut values = Vec::new();
         'trace: for (_index, trace) in &self.traces {
             if trace.key != *key {
                 continue;
             }
             for (dep_key, dep_hash) in &trace.deps {
-                let hash = self.fetch(dep_key).await?.hash();
+                let ctx = Arc::clone(&self);
+                let hash = ctx.fetch(dep_key).await?.hash();
                 if *dep_hash != hash {
                     continue 'trace;
                 }
@@ -123,14 +128,14 @@ impl BuildCtx {
     }
 }
 
-async fn which(ctx: &BuildCtx, name: &str) -> anyhow::Result<Utf8PathBuf> {
+async fn which(ctx: Arc<BuildCtx>, name: &str) -> anyhow::Result<Utf8PathBuf> {
     let Value::Path(bytes) = ctx.fetch(&Key::Which(name.to_owned())).await? else {
         unreachable!()
     };
     Ok(bytes)
 }
 
-async fn task_which(_ctx: &BuildCtx, name: &str) -> anyhow::Result<Utf8PathBuf> {
+async fn task_which(_ctx: Arc<BuildCtx>, name: &str) -> anyhow::Result<Utf8PathBuf> {
     let output = Command::new("which").arg(name).output().await?;
 
     if !output.status.success() {
@@ -145,7 +150,7 @@ async fn task_which(_ctx: &BuildCtx, name: &str) -> anyhow::Result<Utf8PathBuf> 
 }
 
 #[expect(clippy::unused_async)]
-async fn task_which_stub(_ctx: &BuildCtx, name: &str) -> anyhow::Result<Utf8PathBuf> {
+async fn task_which_stub(_ctx: Arc<BuildCtx>, name: &str) -> anyhow::Result<Utf8PathBuf> {
     let path = match name {
         "sh" => Utf8PathBuf::from("/bin/sh"),
         "vim" => Utf8PathBuf::from("/usr/bin/vim"),
@@ -155,7 +160,7 @@ async fn task_which_stub(_ctx: &BuildCtx, name: &str) -> anyhow::Result<Utf8Path
     Ok(path)
 }
 
-async fn read_file(ctx: &BuildCtx, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
+async fn read_file(ctx: Arc<BuildCtx>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
     let path = path.as_ref();
     let Value::Bytes(bytes) = ctx.fetch(&Key::ReadFile(path.to_owned())).await? else {
         unreachable!()
@@ -163,13 +168,13 @@ async fn read_file(ctx: &BuildCtx, path: impl AsRef<Utf8Path>) -> anyhow::Result
     Ok(bytes)
 }
 
-async fn task_read_file(_ctx: &BuildCtx, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+async fn task_read_file(_ctx: Arc<BuildCtx>, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
     let bytes = fs::read(&path).await?;
     Ok(bytes)
 }
 
 #[expect(clippy::unused_async)]
-async fn task_read_file_stub(_ctx: &BuildCtx, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+async fn task_read_file_stub(_ctx: Arc<BuildCtx>, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
     let bytes = match path.as_str() {
         "/files" => Vec::from(b"/files/a\n/files/a\n/files/b\n"),
         "/files/a" => Vec::from(b"AAAA\n"),
@@ -182,33 +187,26 @@ async fn task_read_file_stub(_ctx: &BuildCtx, path: &Utf8Path) -> anyhow::Result
 
 /// Given the path to a file containing newline separated paths, concatenate the contents of the
 /// files at those paths.
-async fn concat(ctx: &BuildCtx, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+async fn concat(ctx: Arc<BuildCtx>, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
     let paths = {
-        let bytes = read_file(ctx, path).await?;
+        let bytes = read_file(Arc::clone(&ctx), path).await?;
         let string = str::from_utf8(&bytes)?;
         string.lines().map(Utf8PathBuf::from).collect::<Vec<_>>()
     };
 
     let mut output = Vec::new();
 
+    let mut handles = Vec::with_capacity(paths.len());
+
     for path in paths {
-        let bytes = read_file(ctx, path).await?;
-        output.extend(bytes);
+        let handle = tokio::spawn(read_file(Arc::clone(&ctx), path));
+        handles.push(handle);
     }
 
-    // TODO: Make the context `Send` + `Sync` so tasks can run concurrently.
-
-    // let mut handles = Vec::with_capacity(paths.len());
-
-    // for path in paths {
-    //     let handle = tokio::spawn(read_file(ctx, path));
-    //     handles.push(handle);
-    // }
-
-    // for handle in handles {
-    //     let bytes = handle.await??;
-    //     output.extend(bytes);
-    // }
+    for handle in handles {
+        let bytes = handle.await??;
+        output.extend(bytes);
+    }
 
     Ok(output)
 }
@@ -219,9 +217,9 @@ mod tests {
 
     #[tokio::test]
     async fn test() -> anyhow::Result<()> {
-        let ctx = BuildCtx::new();
+        let ctx = Arc::new(BuildCtx::new());
         let path = Utf8PathBuf::from("/files");
-        let result = concat(&ctx, &path).await?;
+        let result = concat(Arc::clone(&ctx), &path).await?;
         assert_eq!(&result, b"AAAA\nAAAA\nBBBB\n");
         let expected_store = papaya::HashMap::new();
         expected_store.pin().insert(
