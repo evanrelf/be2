@@ -5,7 +5,7 @@ use std::{
     str,
     sync::{
         Arc,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 use tokio::{fs, process::Command};
@@ -41,6 +41,7 @@ struct Trace {
 /// etc.
 #[derive(Default)]
 struct BuildCtx {
+    debug_stubs: AtomicBool,
     debug_task_counter: AtomicUsize,
     done: papaya::HashSet<Key>,
     store: papaya::HashMap<Key, Value>,
@@ -55,7 +56,6 @@ impl BuildCtx {
     /// Get the value associated with the given key. Either retrieves a previously cached value, or
     /// kicks off a task to produce the value.
     async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
-        let debug_stub = true;
         if self.done.pin().contains(key) {
             let store = self.store.pin();
             let value = store.get(key).unwrap();
@@ -64,7 +64,7 @@ impl BuildCtx {
         let ctx = Arc::clone(&self);
         let value = match key {
             Key::Which(name) => {
-                let path = if debug_stub {
+                let path = if self.debug_stubs.load(Ordering::SeqCst) {
                     task_which_stub(ctx, name).await?
                 } else {
                     task_which(ctx, name).await?
@@ -72,7 +72,7 @@ impl BuildCtx {
                 Value::Path(path)
             }
             Key::ReadFile(path) => {
-                let bytes = if debug_stub {
+                let bytes = if self.debug_stubs.load(Ordering::SeqCst) {
                     task_read_file_stub(ctx, path).await?
                 } else {
                     task_read_file(ctx, path).await?
@@ -199,8 +199,10 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test() -> anyhow::Result<()> {
-        let ctx = Arc::new(BuildCtx::new());
+    async fn test_stubs() -> anyhow::Result<()> {
+        let ctx = BuildCtx::new();
+        ctx.debug_stubs.store(true, Ordering::SeqCst);
+
         let path = Utf8PathBuf::from("/files");
 
         let result = concat(Arc::clone(&ctx), &path).await?;
@@ -231,6 +233,16 @@ mod tests {
         // cached.
         assert_eq!(ctx.debug_task_counter.load(Ordering::SeqCst), 3);
 
+        Ok(())
+    }
+
+    #[ignore = "requires manually setting up files"]
+    #[tokio::test]
+    async fn test_io() -> anyhow::Result<()> {
+        let ctx = BuildCtx::new();
+        let path = Utf8PathBuf::from("/Users/evanrelf/Desktop/files");
+        let result = concat(ctx, &path).await?;
+        assert_eq!(&result, b"AAAA\nAAAA\nBBBB\n");
         Ok(())
     }
 }
