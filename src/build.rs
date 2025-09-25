@@ -86,23 +86,6 @@ impl BuildCtx {
         Ok(value)
     }
 
-    // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#isDirtyCT
-    fn is_dirty(self: Arc<Self>, key: &Key) -> bool {
-        let store = self.store.pin();
-        for (_index, trace) in &self.traces {
-            let key_match = trace.key == *key;
-            let value_match = trace.value == *store.get(key).unwrap();
-            let deps_match = trace
-                .deps
-                .iter()
-                .all(|(dep_key, dep_hash)| store.get(dep_key).unwrap().hash() == *dep_hash);
-            if key_match && value_match && deps_match {
-                return false;
-            }
-        }
-        true
-    }
-
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#recordCT
     fn record(self: Arc<Self>, trace: Trace) {
         self.traces.push(trace);
