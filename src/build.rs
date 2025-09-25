@@ -50,18 +50,26 @@ impl BuildCtx {
     /// Get the value associated with the given key. Either retrieves a previously cached value, or
     /// kicks off a task to produce the value.
     async fn fetch(&self, key: &Key) -> anyhow::Result<Value> {
+        let debug_stub = true;
+
         if let Some(value) = self.store.pin().get(key) {
             return Ok(value.clone());
         }
         let value = match key {
             Key::Which(name) => {
-                // let path = task_which(self, name).await?;
-                let path = task_which_stub(self, name).await?;
+                let path = if debug_stub {
+                    task_which_stub(self, name).await?
+                } else {
+                    task_which(self, name).await?
+                };
                 Value::Path(path)
             }
             Key::ReadFile(path) => {
-                // let bytes = task_read_file(self, path).await?;
-                let bytes = task_read_file_stub(self, path).await?;
+                let bytes = if debug_stub {
+                    task_read_file_stub(self, path).await?
+                } else {
+                    task_read_file(self, path).await?
+                };
                 Value::Bytes(bytes)
             }
         };
