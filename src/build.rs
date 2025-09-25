@@ -33,18 +33,13 @@ struct Trace {
     deps: HashMap<Key, Hash>,
 }
 
-#[derive(Default)]
-struct Store {
-    products: papaya::HashMap<Key, Value>,
-    traces: boxcar::Vec<Trace>,
-}
-
 /// Global context used for the duration of the build. Stores build products, constructive traces,
 /// etc.
 #[derive(Default)]
 struct BuildCtx {
     debug_task_counter: AtomicUsize,
-    store: Store,
+    store: papaya::HashMap<Key, Value>,
+    traces: boxcar::Vec<Trace>,
 }
 
 impl BuildCtx {
@@ -52,10 +47,10 @@ impl BuildCtx {
         Self::default()
     }
 
-    /// Get the value associated with the given key. Either retrieves a cached value from the cache,
-    /// or kicks off a task to produce the value.
+    /// Get the value associated with the given key. Either retrieves a previously cached value, or
+    /// kicks off a task to produce the value.
     async fn fetch(&self, key: &Key) -> anyhow::Result<Value> {
-        if let Some(value) = self.store.products.pin().get(key) {
+        if let Some(value) = self.store.pin().get(key) {
             return Ok(value.clone());
         }
         let value = match key {
@@ -71,20 +66,20 @@ impl BuildCtx {
             }
         };
         self.debug_task_counter.fetch_add(1, Ordering::SeqCst);
-        self.store.products.pin().insert(key.clone(), value.clone());
+        self.store.pin().insert(key.clone(), value.clone());
         Ok(value)
     }
 
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#isDirtyCT
     fn is_dirty(&self, key: &Key) -> bool {
-        let products = self.store.products.pin();
-        for (_index, trace) in &self.store.traces {
+        let store = self.store.pin();
+        for (_index, trace) in &self.traces {
             let key_match = trace.key == *key;
-            let value_match = trace.value == *products.get(key).unwrap();
+            let value_match = trace.value == *store.get(key).unwrap();
             let deps_match = trace
                 .deps
                 .iter()
-                .all(|(dep_key, dep_hash)| products.get(dep_key).unwrap().hash() == *dep_hash);
+                .all(|(dep_key, dep_hash)| store.get(dep_key).unwrap().hash() == *dep_hash);
             if key_match && value_match && deps_match {
                 return false;
             }
@@ -204,20 +199,20 @@ mod tests {
         let path = Utf8PathBuf::from("/files");
         let result = concat(&ctx, &path).await?;
         assert_eq!(&result, b"AAAA\nAAAA\nBBBB\n");
-        let expected_products = papaya::HashMap::new();
-        expected_products.pin().insert(
+        let expected_store = papaya::HashMap::new();
+        expected_store.pin().insert(
             Key::ReadFile(Utf8PathBuf::from("/files")),
             Value::Bytes(Vec::from(b"/files/a\n/files/a\n/files/b\n")),
         );
-        expected_products.pin().insert(
+        expected_store.pin().insert(
             Key::ReadFile(Utf8PathBuf::from("/files/a")),
             Value::Bytes(Vec::from(b"AAAA\n")),
         );
-        expected_products.pin().insert(
+        expected_store.pin().insert(
             Key::ReadFile(Utf8PathBuf::from("/files/b")),
             Value::Bytes(Vec::from(b"BBBB\n")),
         );
-        assert_eq!(ctx.store.products, expected_products);
+        assert_eq!(ctx.store, expected_store);
         // Should match number of files read, not number of file reads; subsequent reads should be
         // cached.
         assert_eq!(ctx.debug_task_counter.load(Ordering::SeqCst), 3);

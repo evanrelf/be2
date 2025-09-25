@@ -20,7 +20,7 @@ pub async fn connect(path: &Utf8Path) -> anyhow::Result<SqlitePool> {
 pub async fn migrate(db: &SqlitePool) -> anyhow::Result<()> {
     sqlx::query(
         "
-        create table if not exists products (
+        create table if not exists store (
             key blob primary key,
             value blob not null
         ) strict;
@@ -61,8 +61,8 @@ pub struct Trace {
     pub deps: HashMap<Key, Hash>,
 }
 
-pub async fn fetch_product(db: &SqlitePool, key: &Key) -> anyhow::Result<Option<Value>> {
-    let bytes = sqlx::query_scalar("select value from products where key = $1")
+pub async fn fetch(db: &SqlitePool, key: &Key) -> anyhow::Result<Option<Value>> {
+    let bytes = sqlx::query_scalar("select value from store where key = $1")
         .bind(&key.0)
         .fetch_optional(db)
         .await?;
@@ -70,25 +70,25 @@ pub async fn fetch_product(db: &SqlitePool, key: &Key) -> anyhow::Result<Option<
     Ok(bytes.map(Value))
 }
 
-pub async fn fetch_products(db: &SqlitePool) -> anyhow::Result<HashMap<Key, Value>> {
-    let rows = sqlx::query("select key, value from products")
+pub async fn fetch_all(db: &SqlitePool) -> anyhow::Result<HashMap<Key, Value>> {
+    let rows = sqlx::query("select key, value from store")
         .fetch_all(db)
         .await?;
 
-    let mut products = HashMap::with_capacity(rows.len());
+    let mut store = HashMap::with_capacity(rows.len());
 
     for row in rows {
         let key = Key(row.get(0));
         let value = Value(row.get(1));
 
-        products.insert(key, value);
+        store.insert(key, value);
     }
 
-    Ok(products)
+    Ok(store)
 }
 
-pub async fn insert_product(db: &SqlitePool, key: &Key, value: &Value) -> anyhow::Result<()> {
-    sqlx::query("insert into products (key, value) values ($1, $2)")
+pub async fn insert(db: &SqlitePool, key: &Key, value: &Value) -> anyhow::Result<()> {
+    sqlx::query("insert into store (key, value) values ($1, $2)")
         .bind(&key.0)
         .bind(&value.0)
         .execute(db)
@@ -165,21 +165,21 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_product_roundtrip() -> anyhow::Result<()> {
+    async fn test_store_roundtrip() -> anyhow::Result<()> {
         let db = SqlitePool::connect(":memory:").await?;
         migrate(&db).await?;
 
         let key = Key(Vec::from(b"password"));
         let value = Value(Vec::from(b"hunter2"));
 
-        insert_product(&db, &key, &value).await?;
+        insert(&db, &key, &value).await?;
 
-        let mut expected_products = HashMap::new();
-        expected_products.insert(key, value);
+        let mut expected_store = HashMap::new();
+        expected_store.insert(key, value);
 
-        let actual_products = fetch_products(&db).await?;
+        let actual_store = fetch_all(&db).await?;
 
-        assert_eq!(expected_products, actual_products);
+        assert_eq!(expected_store, actual_store);
 
         Ok(())
     }

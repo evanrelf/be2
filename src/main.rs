@@ -36,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
 
     fs::create_dir_all(&cache_dir).await?;
 
-    let sqlite_path = cache_dir.join("store.sqlite");
+    let sqlite_path = cache_dir.join("cache.sqlite");
 
     match args.command {
         Command::Lint => {
