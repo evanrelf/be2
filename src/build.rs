@@ -219,8 +219,10 @@ mod tests {
     async fn test() -> anyhow::Result<()> {
         let ctx = Arc::new(BuildCtx::new());
         let path = Utf8PathBuf::from("/files");
+
         let result = concat(Arc::clone(&ctx), &path).await?;
         assert_eq!(&result, b"AAAA\nAAAA\nBBBB\n");
+
         let expected_store = papaya::HashMap::new();
         expected_store.pin().insert(
             Key::ReadFile(Utf8PathBuf::from("/files")),
@@ -235,9 +237,17 @@ mod tests {
             Value::Bytes(Vec::from(b"BBBB\n")),
         );
         assert_eq!(ctx.store, expected_store);
+
+        let expected_done = papaya::HashSet::new();
+        for key in expected_store.pin().keys() {
+            expected_done.pin().insert(key.clone());
+        }
+        assert_eq!(ctx.done, expected_done);
+
         // Should match number of files read, not number of file reads; subsequent reads should be
         // cached.
         assert_eq!(ctx.debug_task_counter.load(Ordering::SeqCst), 3);
+
         Ok(())
     }
 }
