@@ -78,7 +78,9 @@ pub struct Trace {
 impl Hash for Trace {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.key.hash(state);
-        for dep in &self.deps {
+        let mut deps = Vec::from_iter(&self.deps);
+        deps.sort_unstable();
+        for dep in &deps {
             dep.hash(state);
         }
         self.value.hash(state);
