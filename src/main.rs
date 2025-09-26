@@ -5,6 +5,7 @@ mod cli;
 mod db;
 mod format;
 mod lint;
+mod util;
 
 use crate::cli::{Args, Command};
 use camino::Utf8PathBuf;
