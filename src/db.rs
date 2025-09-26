@@ -148,7 +148,7 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> sqlx::Result<i64> {
         "
         insert or ignore into traces (key, value, trace_hash) values ($1, $2, $3);
 
-        select id, changes() == 0 as dupe from traces where trace_hash = $3;
+        select id, changes() == 0 as is_dupe from traces where trace_hash = $3;
         ",
     )
     .bind(&trace.key[..])
@@ -158,9 +158,9 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> sqlx::Result<i64> {
     .await?;
 
     let trace_id = row.get(0);
-    let dupe = row.get(1);
+    let is_dupe = row.get(1);
 
-    if dupe {
+    if is_dupe {
         return Ok(trace_id);
     }
 
