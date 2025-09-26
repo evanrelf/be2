@@ -20,6 +20,12 @@ enum Command {
     Clean,
 }
 
+struct Env {
+    args: Args,
+    xdg: Xdg,
+    db_path: Utf8PathBuf,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -36,20 +42,30 @@ async fn main() -> anyhow::Result<()> {
 
     fs::create_dir_all(&cache_dir).await?;
 
-    let sqlite_path = cache_dir.join("cache.sqlite");
+    let db_path = cache_dir.join("cache.sqlite");
 
-    match args.command {
-        Command::Lint => {
-            let sqlite = db::connect(&sqlite_path).await?;
-            db::migrate(&sqlite).await?;
+    let env = Env { args, xdg, db_path };
 
-            tracing::info!("totally linting right now...");
-        }
-        Command::Clean => {
-            if fs::try_exists(&sqlite_path).await? {
-                fs::remove_file(&sqlite_path).await?;
-            }
-        }
+    match env.args.command {
+        Command::Lint => run_lint(env).await?,
+        Command::Clean => run_clean(env).await?,
+    }
+
+    Ok(())
+}
+
+async fn run_lint(env: Env) -> anyhow::Result<()> {
+    let db = db::connect(&env.db_path).await?;
+    db::migrate(&db).await?;
+
+    tracing::info!("totally linting right now...");
+
+    Ok(())
+}
+
+async fn run_clean(env: Env) -> anyhow::Result<()> {
+    if fs::try_exists(&env.db_path).await? {
+        fs::remove_file(&env.db_path).await?;
     }
 
     Ok(())
