@@ -8,7 +8,7 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
-use tokio::{fs, process::Command};
+use tokio::{fs, process::Command, sync::OnceCell};
 use twox_hash::XxHash3_64;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -44,7 +44,7 @@ struct BuildCtx {
     debug_stubs: AtomicBool,
     debug_task_counter: AtomicUsize,
     done: papaya::HashSet<Key>,
-    store: papaya::HashMap<Key, Value>,
+    store: papaya::HashMap<Key, OnceCell<Value>>,
     traces: boxcar::Vec<Trace>,
 }
 
@@ -58,32 +58,43 @@ impl BuildCtx {
     async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
         if self.done.pin().contains(key) {
             let store = self.store.pin();
-            let value = store.get(key).unwrap();
-            return Ok(value.clone());
+            // SAFETY: If a key is marked as "done," it has already been built, and its value is
+            // present in the store.
+            let thunk = store.get(key).unwrap();
+            let value = thunk.get().unwrap().clone();
+            return Ok(value);
         }
         let ctx = Arc::clone(&self);
-        let value = match key {
-            Key::Which(name) => {
-                let path = if self.debug_stubs.load(Ordering::SeqCst) {
-                    task_which_stub(ctx, name).await?
-                } else {
-                    task_which(ctx, name).await?
+        let store = self.store.pin_owned();
+        let thunk = store.get_or_insert(key.clone(), OnceCell::new());
+        let value = thunk
+            .get_or_try_init(|| async {
+                let value = match key {
+                    Key::Which(name) => {
+                        let path = if self.debug_stubs.load(Ordering::SeqCst) {
+                            task_which_stub(ctx, name).await?
+                        } else {
+                            task_which(ctx, name).await?
+                        };
+                        Value::Path(path)
+                    }
+                    Key::File(path) => {
+                        let bytes = if self.debug_stubs.load(Ordering::SeqCst) {
+                            task_read_file_stub(ctx, path).await?
+                        } else {
+                            task_read_file(ctx, path).await?
+                        };
+                        Value::Bytes(bytes)
+                    }
                 };
-                Value::Path(path)
-            }
-            Key::File(path) => {
-                let bytes = if self.debug_stubs.load(Ordering::SeqCst) {
-                    task_read_file_stub(ctx, path).await?
-                } else {
-                    task_read_file(ctx, path).await?
-                };
-                Value::Bytes(bytes)
-            }
-        };
+                anyhow::Ok(value)
+            })
+            .await?
+            .clone();
+        drop(store);
         self.done.pin().insert(key.clone());
-        self.store.pin().insert(key.clone(), value.clone());
         self.debug_task_counter.fetch_add(1, Ordering::SeqCst);
-        Ok(value)
+        Ok(value.clone())
     }
 
     // https://hackage.haskell.org/package/build-1.1/docs/src/Build.Trace.html#recordCT
@@ -211,15 +222,15 @@ mod tests {
         let expected_store = papaya::HashMap::new();
         expected_store.pin().insert(
             Key::File(Utf8PathBuf::from("/files")),
-            Value::Bytes(Vec::from(b"/files/a\n/files/a\n/files/b\n")),
+            OnceCell::from(Value::Bytes(Vec::from(b"/files/a\n/files/a\n/files/b\n"))),
         );
         expected_store.pin().insert(
             Key::File(Utf8PathBuf::from("/files/a")),
-            Value::Bytes(Vec::from(b"AAAA\n")),
+            OnceCell::from(Value::Bytes(Vec::from(b"AAAA\n"))),
         );
         expected_store.pin().insert(
             Key::File(Utf8PathBuf::from("/files/b")),
-            Value::Bytes(Vec::from(b"BBBB\n")),
+            OnceCell::from(Value::Bytes(Vec::from(b"BBBB\n"))),
         );
         assert_eq!(ctx.store, expected_store);
 
