@@ -14,7 +14,7 @@ use twox_hash::XxHash3_64;
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum Key {
     Which(String),
-    ReadFile(Utf8PathBuf),
+    File(Utf8PathBuf),
 }
 
 #[derive(Clone, Debug, Hash, PartialEq)]
@@ -71,7 +71,7 @@ impl BuildCtx {
                 };
                 Value::Path(path)
             }
-            Key::ReadFile(path) => {
+            Key::File(path) => {
                 let bytes = if self.debug_stubs.load(Ordering::SeqCst) {
                     task_read_file_stub(ctx, path).await?
                 } else {
@@ -145,7 +145,7 @@ async fn task_which_stub(_ctx: Arc<BuildCtx>, name: &str) -> anyhow::Result<Utf8
 
 async fn read_file(ctx: Arc<BuildCtx>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
     let path = path.as_ref();
-    let Value::Bytes(bytes) = ctx.build(&Key::ReadFile(path.to_owned())).await? else {
+    let Value::Bytes(bytes) = ctx.build(&Key::File(path.to_owned())).await? else {
         unreachable!()
     };
     Ok(bytes)
@@ -210,15 +210,15 @@ mod tests {
 
         let expected_store = papaya::HashMap::new();
         expected_store.pin().insert(
-            Key::ReadFile(Utf8PathBuf::from("/files")),
+            Key::File(Utf8PathBuf::from("/files")),
             Value::Bytes(Vec::from(b"/files/a\n/files/a\n/files/b\n")),
         );
         expected_store.pin().insert(
-            Key::ReadFile(Utf8PathBuf::from("/files/a")),
+            Key::File(Utf8PathBuf::from("/files/a")),
             Value::Bytes(Vec::from(b"AAAA\n")),
         );
         expected_store.pin().insert(
-            Key::ReadFile(Utf8PathBuf::from("/files/b")),
+            Key::File(Utf8PathBuf::from("/files/b")),
             Value::Bytes(Vec::from(b"BBBB\n")),
         );
         assert_eq!(ctx.store, expected_store);
