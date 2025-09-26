@@ -1,4 +1,5 @@
 pub mod format;
+pub mod lint;
 
 #[derive(clap::Parser)]
 #[command(disable_help_subcommand = true)]
@@ -11,6 +12,9 @@ pub struct Args {
 pub enum Command {
     /// Format code
     Format(format::Args),
+
+    /// Lint code
+    Lint(lint::Args),
 
     /// Delete cache
     Clean,

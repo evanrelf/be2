@@ -4,6 +4,7 @@ mod build;
 mod cli;
 mod db;
 mod format;
+mod lint;
 
 use crate::cli::{Args, Command};
 use camino::Utf8PathBuf;
@@ -31,6 +32,7 @@ async fn main() -> anyhow::Result<()> {
 
     match args.command {
         Command::Format(args) => format::run(args).await?,
+        Command::Lint(args) => lint::run(args).await?,
         Command::Clean => {
             if fs::try_exists(&db_path).await? {
                 fs::remove_file(&db_path).await?;
