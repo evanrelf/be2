@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
-mod build;
 mod build2;
 mod cli;
 mod db;
 mod format;
 mod lint;
+mod old_build;
 mod util;
 
 use crate::cli::{Args, Command};
