@@ -61,6 +61,7 @@ struct Context {
 }
 
 impl Context {
+    #[expect(clippy::unused_async)]
     async fn build(&mut self, _key: &Key) -> anyhow::Result<Value> {
         todo!()
     }
@@ -71,6 +72,7 @@ impl Context {
         Ok(())
     }
 
+    #[expect(clippy::unused_async)]
     async fn construct(&mut self, _key: &Key) -> anyhow::Result<HashSet<Value>> {
         todo!()
     }
