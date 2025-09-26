@@ -4,7 +4,8 @@ use sqlx::{
     Row as _, SqlitePool,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
 };
-use std::{collections::HashMap, str::FromStr as _};
+use std::{collections::HashMap, hash::BuildHasherDefault, str::FromStr as _};
+use twox_hash::XxHash3_64;
 
 pub async fn connect(path: &Utf8Path) -> anyhow::Result<SqlitePool> {
     let sqlite = SqlitePool::connect_with(
@@ -44,7 +45,7 @@ pub async fn migrate(db: &SqlitePool) -> anyhow::Result<()> {
 #[derive(Debug, PartialEq)]
 pub struct Trace {
     pub key: Bytes,
-    pub deps: HashMap<Bytes, u64>,
+    pub deps: HashMap<Bytes, u64, BuildHasherDefault<XxHash3_64>>,
     pub value: Bytes,
 }
 
@@ -73,12 +74,13 @@ pub async fn fetch_traces(db: &SqlitePool, key: Option<&Bytes>) -> anyhow::Resul
         let value: Vec<u8> = trace_row.get(2);
         let value = Bytes::from(value);
 
-        let deps_rows = sqlx::query("select key, value_hash from trace_deps where trace_id = $1")
+        let deps_rows = sqlx::query("select key, hash from trace_deps where trace_id = $1")
             .bind(trace_id)
             .fetch_all(db)
             .await?;
 
-        let mut deps = HashMap::with_capacity(deps_rows.len());
+        let mut deps =
+            HashMap::with_capacity_and_hasher(deps_rows.len(), BuildHasherDefault::new());
 
         for deps_row in deps_rows {
             let dep_key: Vec<u8> = deps_row.get(0);
@@ -108,13 +110,13 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> anyhow::Result<()> 
             .fetch_one(&mut *tx)
             .await?;
 
-    for (dep_key, dep_value_hash) in &trace.deps {
-        let dep_value_hash = &dep_value_hash.to_le_bytes()[..];
+    for (dep_key, dep_hash) in &trace.deps {
+        let dep_hash = &dep_hash.to_le_bytes()[..];
 
-        sqlx::query("insert into trace_deps (trace_id, key, value_hash) values ($1, $2, $3)")
+        sqlx::query("insert into trace_deps (trace_id, key, hash) values ($1, $2, $3)")
             .bind(trace_id)
             .bind(&dep_key[..])
-            .bind(dep_value_hash)
+            .bind(dep_hash)
             .execute(&mut *tx)
             .await?;
     }
@@ -134,7 +136,7 @@ mod tests {
         migrate(&db).await?;
 
         let key = Bytes::from("password");
-        let deps = HashMap::new();
+        let deps = HashMap::default();
         let value = Bytes::from("hunter2");
         let trace = Trace { key, deps, value };
 
