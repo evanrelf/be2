@@ -11,7 +11,7 @@ use std::{
 };
 use twox_hash::XxHash3_64;
 
-pub async fn connect(path: &Utf8Path) -> anyhow::Result<SqlitePool> {
+pub async fn connect(path: &Utf8Path) -> sqlx::Result<SqlitePool> {
     let sqlite = SqlitePool::connect_with(
         SqliteConnectOptions::from_str(&format!("sqlite://{path}"))?
             .create_if_missing(true)
@@ -23,7 +23,7 @@ pub async fn connect(path: &Utf8Path) -> anyhow::Result<SqlitePool> {
     Ok(sqlite)
 }
 
-pub async fn migrate(db: &SqlitePool) -> anyhow::Result<()> {
+pub async fn migrate(db: &SqlitePool) -> sqlx::Result<()> {
     sqlx::query(
         "
         create table if not exists traces (
@@ -137,7 +137,7 @@ pub async fn fetch_traces(db: &SqlitePool, key: Option<&Bytes>) -> anyhow::Resul
     Ok(traces)
 }
 
-pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> anyhow::Result<i64> {
+pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> sqlx::Result<i64> {
     let mut tx = db.begin().await?;
 
     let mut hasher = XxHash3_64::default();
