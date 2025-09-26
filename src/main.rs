@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-mod build2;
+mod build;
 mod cli;
 mod db;
 mod format;
