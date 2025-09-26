@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use std::{convert::Infallible, hash::Hash};
 
 pub trait Store {
@@ -63,24 +64,24 @@ impl<'a> SqliteStore<'a> {
 }
 
 impl Store for SqliteStore<'_> {
-    type Key = Vec<u8>;
+    type Key = Bytes;
 
-    type Value = Vec<u8>;
+    type Value = Bytes;
 
-    type Error = anyhow::Error;
+    type Error = sqlx::Error;
 
     async fn get(&self, key: &Self::Key) -> Result<Option<Self::Value>, Self::Error> {
-        let bytes = sqlx::query_scalar("select value from store where key = $1")
-            .bind(key)
+        let bytes: Option<Vec<u8>> = sqlx::query_scalar("select value from store where key = $1")
+            .bind(&key[..])
             .fetch_optional(self.sqlite)
             .await?;
-        Ok(bytes)
+        Ok(bytes.map(Bytes::from))
     }
 
     async fn insert(&self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
         sqlx::query("insert into store (key, value) values ($1, $2)")
-            .bind(key)
-            .bind(value)
+            .bind(&key[..])
+            .bind(&value[..])
             .execute(self.sqlite)
             .await?;
         Ok(())
