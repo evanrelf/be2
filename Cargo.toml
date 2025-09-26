@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.100"
 boxcar = "0.2.14"
-bytes = "1.10.1"
 camino = { version = "1.2.0", features = ["serde1"] }
 clap = { version = "4.5.47", features = ["derive"] }
 etcetera = "0.10.0"

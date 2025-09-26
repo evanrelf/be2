@@ -127,7 +127,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "boxcar",
- "bytes",
  "camino",
  "clap",
  "etcetera 0.10.0",
