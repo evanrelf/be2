@@ -48,38 +48,48 @@ pub struct Trace {
     pub deps: HashMap<Bytes, u64>,
 }
 
-pub async fn fetch_traces(db: &SqlitePool) -> anyhow::Result<Vec<Trace>> {
-    let trace_rows = sqlx::query("select id, key, value from traces")
-        .fetch_all(db)
-        .await?;
+pub async fn fetch_traces(db: &SqlitePool, key: Option<&Bytes>) -> anyhow::Result<Vec<Trace>> {
+    let trace_rows = if let Some(key) = key {
+        sqlx::query("select id, null, value from traces where key = $1")
+            .bind(&key[..])
+            .fetch_all(db)
+            .await?
+    } else {
+        sqlx::query("select id, key, value from traces")
+            .fetch_all(db)
+            .await?
+    };
 
     let mut traces = Vec::with_capacity(trace_rows.len());
 
     for trace_row in trace_rows {
         let trace_id: i64 = trace_row.get(0);
-        let key: Vec<u8> = trace_row.get(1);
-        let key = Bytes::from(key);
+        let key = if let Some(key) = key {
+            key.clone()
+        } else {
+            let key: Vec<u8> = trace_row.get(1);
+            Bytes::from(key)
+        };
         let value: Vec<u8> = trace_row.get(2);
         let value = Bytes::from(value);
 
-        let trace_deps_rows =
-            sqlx::query("select key, value_hash from trace_deps where trace_id = $1")
-                .bind(trace_id)
-                .fetch_all(db)
-                .await?;
+        let deps_rows = sqlx::query("select key, value_hash from trace_deps where trace_id = $1")
+            .bind(trace_id)
+            .fetch_all(db)
+            .await?;
 
-        let mut deps = HashMap::with_capacity(trace_deps_rows.len());
+        let mut deps = HashMap::with_capacity(deps_rows.len());
 
-        for trace_deps_row in trace_deps_rows {
-            let key: Vec<u8> = trace_deps_row.get(0);
-            let key = Bytes::from(key);
-            let value: Vec<u8> = trace_deps_row.get(1);
-            let value: [u8; 8] = match value.try_into() {
+        for deps_row in deps_rows {
+            let dep_key: Vec<u8> = deps_row.get(0);
+            let dep_key = Bytes::from(dep_key);
+            let dep_value: Vec<u8> = deps_row.get(1);
+            let dep_value: [u8; 8] = match dep_value.try_into() {
                 Ok(value) => value,
                 Err(bytes) => anyhow::bail!("expected 8 bytes, found {} bytes", bytes.len()),
             };
-            let value = u64::from_le_bytes(value);
-            deps.insert(key, value);
+            let dep_value = u64::from_le_bytes(dep_value);
+            deps.insert(dep_key, dep_value);
         }
 
         traces.push(Trace { key, value, deps });
@@ -98,13 +108,13 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> anyhow::Result<()> 
             .fetch_one(&mut *tx)
             .await?;
 
-    for (key, value_hash) in &trace.deps {
-        let value_hash = &value_hash.to_le_bytes()[..];
+    for (dep_key, dep_value_hash) in &trace.deps {
+        let dep_value_hash = &dep_value_hash.to_le_bytes()[..];
 
         sqlx::query("insert into trace_deps (trace_id, key, value_hash) values ($1, $2, $3)")
             .bind(trace_id)
-            .bind(&key[..])
-            .bind(value_hash)
+            .bind(&dep_key[..])
+            .bind(dep_value_hash)
             .execute(&mut *tx)
             .await?;
     }
@@ -132,7 +142,7 @@ mod tests {
 
         let expected_traces = vec![trace];
 
-        let actual_traces = fetch_traces(&db).await?;
+        let actual_traces = fetch_traces(&db, None).await?;
 
         assert_eq!(expected_traces, actual_traces);
 
