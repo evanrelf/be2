@@ -3,18 +3,13 @@
 mod build;
 mod cli;
 mod db;
+mod format;
 
 use crate::cli::{Args, Command};
 use camino::Utf8PathBuf;
 use clap::Parser as _;
 use etcetera::app_strategy::{AppStrategy as _, AppStrategyArgs, Xdg};
 use tokio::fs;
-
-struct Env {
-    args: Args,
-    xdg: Xdg,
-    db_path: Utf8PathBuf,
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -34,28 +29,13 @@ async fn main() -> anyhow::Result<()> {
 
     let db_path = cache_dir.join("cache.sqlite");
 
-    let env = Env { args, xdg, db_path };
-
-    match env.args.command {
-        Command::Format => run_format(env).await?,
-        Command::Clean => run_clean(env).await?,
-    }
-
-    Ok(())
-}
-
-async fn run_format(env: Env) -> anyhow::Result<()> {
-    let db = db::connect(&env.db_path).await?;
-    db::migrate(&db).await?;
-
-    tracing::info!("totally formatting right now...");
-
-    Ok(())
-}
-
-async fn run_clean(env: Env) -> anyhow::Result<()> {
-    if fs::try_exists(&env.db_path).await? {
-        fs::remove_file(&env.db_path).await?;
+    match args.command {
+        Command::Format(args) => format::run(args).await?,
+        Command::Clean => {
+            if fs::try_exists(&db_path).await? {
+                fs::remove_file(&db_path).await?;
+            }
+        }
     }
 
     Ok(())

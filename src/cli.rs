@@ -1,4 +1,7 @@
+pub mod format;
+
 #[derive(clap::Parser)]
+#[command(disable_help_subcommand = true)]
 pub struct Args {
     #[command(subcommand)]
     pub command: Command,
@@ -6,6 +9,9 @@ pub struct Args {
 
 #[derive(clap::Subcommand)]
 pub enum Command {
-    Format,
+    /// Format code
+    Format(format::Args),
+
+    /// Delete cache
     Clean,
 }
