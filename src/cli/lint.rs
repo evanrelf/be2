@@ -12,7 +12,7 @@ pub enum Command {
     Haskell(HaskellArgs),
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Default)]
 pub struct HaskellArgs {
     /// Only lint specific paths
     #[arg(group = "input")]

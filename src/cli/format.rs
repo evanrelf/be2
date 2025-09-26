@@ -15,7 +15,7 @@ pub enum Command {
     Nix(NixArgs),
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Default)]
 pub struct HaskellArgs {
     /// Only format specific paths
     #[arg(group = "input")]
@@ -26,7 +26,7 @@ pub struct HaskellArgs {
     pub stdin: bool,
 }
 
-#[derive(clap::Args)]
+#[derive(clap::Args, Default)]
 pub struct NixArgs {
     /// Only format specific paths
     #[arg(group = "input")]

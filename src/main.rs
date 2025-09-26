@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
 
     let db_path = cache_dir.join("cache.sqlite");
 
-    match args.command {
+    match &args.command {
         Command::Format(args) => format::run(args).await?,
         Command::Lint(args) => lint::run(args).await?,
         Command::Clean => {
