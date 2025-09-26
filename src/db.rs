@@ -44,8 +44,8 @@ pub async fn migrate(db: &SqlitePool) -> anyhow::Result<()> {
 #[derive(Debug, PartialEq)]
 pub struct Trace {
     pub key: Bytes,
-    pub value: Bytes,
     pub deps: HashMap<Bytes, u64>,
+    pub value: Bytes,
 }
 
 pub async fn fetch_traces(db: &SqlitePool, key: Option<&Bytes>) -> anyhow::Result<Vec<Trace>> {
@@ -92,7 +92,7 @@ pub async fn fetch_traces(db: &SqlitePool, key: Option<&Bytes>) -> anyhow::Resul
             deps.insert(dep_key, dep_value);
         }
 
-        traces.push(Trace { key, value, deps });
+        traces.push(Trace { key, deps, value });
     }
 
     Ok(traces)
@@ -134,9 +134,9 @@ mod tests {
         migrate(&db).await?;
 
         let key = Bytes::from("password");
-        let value = Bytes::from("hunter2");
         let deps = HashMap::new();
-        let trace = Trace { key, value, deps };
+        let value = Bytes::from("hunter2");
+        let trace = Trace { key, deps, value };
 
         insert_trace(&db, &trace).await?;
 
