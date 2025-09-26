@@ -16,7 +16,7 @@ struct Args {
 
 #[derive(clap::Subcommand)]
 enum Command {
-    Lint,
+    Format,
     Clean,
 }
 
@@ -47,18 +47,18 @@ async fn main() -> anyhow::Result<()> {
     let env = Env { args, xdg, db_path };
 
     match env.args.command {
-        Command::Lint => run_lint(env).await?,
+        Command::Format => run_format(env).await?,
         Command::Clean => run_clean(env).await?,
     }
 
     Ok(())
 }
 
-async fn run_lint(env: Env) -> anyhow::Result<()> {
+async fn run_format(env: Env) -> anyhow::Result<()> {
     let db = db::connect(&env.db_path).await?;
     db::migrate(&db).await?;
 
-    tracing::info!("totally linting right now...");
+    tracing::info!("totally formatting right now...");
 
     Ok(())
 }
