@@ -2,6 +2,7 @@
 
 mod build;
 mod db;
+mod store;
 
 use camino::Utf8PathBuf;
 use clap::Parser as _;
