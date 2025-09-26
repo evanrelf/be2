@@ -1,24 +1,14 @@
 #![allow(dead_code)]
 
 mod build;
+mod cli;
 mod db;
 
+use crate::cli::{Args, Command};
 use camino::Utf8PathBuf;
 use clap::Parser as _;
 use etcetera::app_strategy::{AppStrategy as _, AppStrategyArgs, Xdg};
 use tokio::fs;
-
-#[derive(clap::Parser)]
-struct Args {
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(clap::Subcommand)]
-enum Command {
-    Format,
-    Clean,
-}
 
 struct Env {
     args: Args,
