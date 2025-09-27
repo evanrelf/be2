@@ -1,6 +1,6 @@
 use crate::{db, task};
 use bytes::Bytes;
-use camino::Utf8PathBuf;
+use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{
@@ -11,17 +11,15 @@ use std::{
 };
 use twox_hash::XxHash3_64;
 
-// TODO: Make `Key` and `Value` types cheap to clone.
-
 #[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Key {
     Which(Arc<str>),
-    ReadFile(Utf8PathBuf),
+    ReadFile(Arc<Utf8Path>),
 }
 
 #[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Value {
-    Path(Utf8PathBuf),
+    Path(Arc<Utf8Path>),
     Bytes(Bytes),
 }
 

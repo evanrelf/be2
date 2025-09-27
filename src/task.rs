@@ -4,14 +4,14 @@ use camino::{Utf8Path, Utf8PathBuf};
 use std::{str, sync::Arc};
 use tokio::{fs, process::Command};
 
-pub async fn which(cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
-    let Value::Path(bytes) = cx.build(&Key::Which(Arc::from(name))).await? else {
+pub async fn which(cx: &mut Context, name: &str) -> anyhow::Result<Arc<Utf8Path>> {
+    let Value::Path(path) = cx.build(&Key::Which(Arc::from(name))).await? else {
         unreachable!()
     };
-    Ok(bytes)
+    Ok(path)
 }
 
-pub async fn task_which(_cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
+pub async fn task_which(_cx: &mut Context, name: &str) -> anyhow::Result<Arc<Utf8Path>> {
     let output = Command::new("which").arg(name).output().await?;
 
     if !output.status.success() {
@@ -20,7 +20,7 @@ pub async fn task_which(_cx: &mut Context, name: &str) -> anyhow::Result<Utf8Pat
 
     let string = str::from_utf8(&output.stdout)?.trim();
 
-    let path = Utf8PathBuf::from(string);
+    let path = Arc::from(Utf8Path::new(string));
 
     Ok(path)
 }
@@ -38,7 +38,7 @@ pub async fn task_which_stub(_cx: &mut Context, name: &str) -> anyhow::Result<Ut
 
 pub async fn read_file(cx: &mut Context, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
     let path = path.as_ref();
-    let Value::Bytes(bytes) = cx.build(&Key::ReadFile(path.to_owned())).await? else {
+    let Value::Bytes(bytes) = cx.build(&Key::ReadFile(Arc::from(path))).await? else {
         unreachable!()
     };
     Ok(bytes)
