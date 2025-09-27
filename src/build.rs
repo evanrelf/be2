@@ -14,7 +14,7 @@ use twox_hash::XxHash3_64;
 
 #[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Key {
-    Which(String),
+    Which(&'static str),
     ReadFile(Utf8PathBuf),
 }
 

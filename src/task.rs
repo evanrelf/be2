@@ -4,8 +4,8 @@ use camino::{Utf8Path, Utf8PathBuf};
 use std::str;
 use tokio::{fs, process::Command};
 
-pub async fn which(cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
-    let Value::Path(bytes) = cx.build(&Key::Which(name.to_owned())).await? else {
+pub async fn which(cx: &mut Context, name: &'static str) -> anyhow::Result<Utf8PathBuf> {
+    let Value::Path(bytes) = cx.build(&Key::Which(name)).await? else {
         unreachable!()
     };
     Ok(bytes)
