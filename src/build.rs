@@ -68,7 +68,16 @@ impl Context {
             return Ok(value);
         }
 
-        let value = match key {
+        let value = self.fetch(key).await?;
+
+        self.store.insert(key.clone(), value.clone());
+        self.done.insert(key.clone());
+
+        Ok(value)
+    }
+
+    async fn fetch(&mut self, key: &Key) -> anyhow::Result<Value> {
+        Ok(match key {
             Key::Which(name) => {
                 let path = task::task_which(self, name).await?;
                 Value::Path(path)
@@ -77,12 +86,7 @@ impl Context {
                 let bytes = task::task_read_file(self, path).await?;
                 Value::Bytes(bytes)
             }
-        };
-
-        self.store.insert(key.clone(), value.clone());
-        self.done.insert(key.clone());
-
-        Ok(value)
+        })
     }
 
     async fn record(&mut self, trace: Trace) -> anyhow::Result<()> {
