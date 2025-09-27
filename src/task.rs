@@ -3,14 +3,14 @@ use camino::{Utf8Path, Utf8PathBuf};
 use std::str;
 use tokio::{fs, process::Command};
 
-async fn which(cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
+pub async fn which(cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
     let Value::Path(bytes) = cx.build(&Key::Which(name.to_owned())).await? else {
         unreachable!()
     };
     Ok(bytes)
 }
 
-async fn task_which(_cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
+pub async fn task_which(_cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
     let output = Command::new("which").arg(name).output().await?;
 
     if !output.status.success() {
@@ -25,7 +25,7 @@ async fn task_which(_cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf
 }
 
 #[expect(clippy::unused_async)]
-async fn task_which_stub(_cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
+pub async fn task_which_stub(_cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
     let path = match name {
         "sh" => Utf8PathBuf::from("/bin/sh"),
         "vim" => Utf8PathBuf::from("/usr/bin/vim"),
@@ -35,7 +35,7 @@ async fn task_which_stub(_cx: &mut Context, name: &str) -> anyhow::Result<Utf8Pa
     Ok(path)
 }
 
-async fn read_file(cx: &mut Context, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
+pub async fn read_file(cx: &mut Context, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
     let path = path.as_ref();
     let Value::Bytes(bytes) = cx.build(&Key::File(path.to_owned())).await? else {
         unreachable!()
@@ -43,13 +43,13 @@ async fn read_file(cx: &mut Context, path: impl AsRef<Utf8Path>) -> anyhow::Resu
     Ok(bytes)
 }
 
-async fn task_read_file(_cx: &mut Context, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+pub async fn task_read_file(_cx: &mut Context, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
     let bytes = fs::read(&path).await?;
     Ok(bytes)
 }
 
 #[expect(clippy::unused_async)]
-async fn task_read_file_stub(_cx: &mut Context, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+pub async fn task_read_file_stub(_cx: &mut Context, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
     let bytes = match path.as_str() {
         "/files" => Vec::from(b"/files/a\n/files/a\n/files/b\n"),
         "/files/a" => Vec::from(b"AAAA\n"),
@@ -60,7 +60,7 @@ async fn task_read_file_stub(_cx: &mut Context, path: &Utf8Path) -> anyhow::Resu
     Ok(bytes)
 }
 
-async fn concat(cx: &mut Context, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+pub async fn concat(cx: &mut Context, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
     let paths = {
         let bytes = read_file(cx, path).await?;
         let string = str::from_utf8(&bytes)?;

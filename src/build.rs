@@ -1,4 +1,4 @@
-use crate::db;
+use crate::{db, task};
 use bytes::Bytes;
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
@@ -12,13 +12,13 @@ use twox_hash::XxHash3_64;
 
 // TODO: Make `Key` and `Value` types cheap to clone.
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Key {
     Which(String),
     File(Utf8PathBuf),
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub enum Value {
     Path(Utf8PathBuf),
     Bytes(Vec<u8>),
@@ -60,9 +60,29 @@ pub struct Context {
 }
 
 impl Context {
-    #[expect(clippy::unused_async)]
-    pub async fn build(&mut self, _key: &Key) -> anyhow::Result<Value> {
-        todo!()
+    pub async fn build(&mut self, key: &Key) -> anyhow::Result<Value> {
+        if self.done.contains(key) {
+            // SAFETY: If a key is marked as done, it has already been built, and its value is
+            // present in the store.
+            let value = self.store.get(key).unwrap().clone();
+            return Ok(value);
+        }
+
+        let value = match key {
+            Key::Which(name) => {
+                let path = task::task_which(self, name).await?;
+                Value::Path(path)
+            }
+            Key::File(path) => {
+                let bytes = task::task_read_file(self, path).await?;
+                Value::Bytes(bytes)
+            }
+        };
+
+        self.store.insert(key.clone(), value.clone());
+        self.done.insert(key.clone());
+
+        Ok(value)
     }
 
     async fn record(&mut self, trace: Trace) -> anyhow::Result<()> {
