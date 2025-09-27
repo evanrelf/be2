@@ -1,4 +1,5 @@
 use crate::build::{Context, Key, Value};
+use bytes::Bytes;
 use camino::{Utf8Path, Utf8PathBuf};
 use std::str;
 use tokio::{fs, process::Command};
@@ -35,7 +36,7 @@ pub async fn task_which_stub(_cx: &mut Context, name: &str) -> anyhow::Result<Ut
     Ok(path)
 }
 
-pub async fn read_file(cx: &mut Context, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
+pub async fn read_file(cx: &mut Context, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
     let path = path.as_ref();
     let Value::Bytes(bytes) = cx.build(&Key::ReadFile(path.to_owned())).await? else {
         unreachable!()
@@ -43,9 +44,9 @@ pub async fn read_file(cx: &mut Context, path: impl AsRef<Utf8Path>) -> anyhow::
     Ok(bytes)
 }
 
-pub async fn task_read_file(_cx: &mut Context, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+pub async fn task_read_file(_cx: &mut Context, path: &Utf8Path) -> anyhow::Result<Bytes> {
     let bytes = fs::read(&path).await?;
-    Ok(bytes)
+    Ok(Bytes::from(bytes))
 }
 
 #[expect(clippy::unused_async)]

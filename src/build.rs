@@ -21,7 +21,7 @@ pub enum Key {
 #[derive(Clone, Deserialize, Serialize)]
 pub enum Value {
     Path(Utf8PathBuf),
-    Bytes(Vec<u8>),
+    Bytes(Bytes),
 }
 
 pub struct Trace {
