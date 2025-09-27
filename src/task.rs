@@ -1,11 +1,11 @@
 use crate::build::{Context, Key, Value};
 use bytes::Bytes;
 use camino::{Utf8Path, Utf8PathBuf};
-use std::str;
+use std::{str, sync::Arc};
 use tokio::{fs, process::Command};
 
-pub async fn which(cx: &mut Context, name: &'static str) -> anyhow::Result<Utf8PathBuf> {
-    let Value::Path(bytes) = cx.build(&Key::Which(name)).await? else {
+pub async fn which(cx: &mut Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
+    let Value::Path(bytes) = cx.build(&Key::Which(Arc::from(name))).await? else {
         unreachable!()
     };
     Ok(bytes)

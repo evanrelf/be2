@@ -7,6 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
     hash::BuildHasherDefault,
     str,
+    sync::Arc,
 };
 use twox_hash::XxHash3_64;
 
@@ -14,7 +15,7 @@ use twox_hash::XxHash3_64;
 
 #[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Key {
-    Which(&'static str),
+    Which(Arc<str>),
     ReadFile(Utf8PathBuf),
 }
 
