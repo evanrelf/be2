@@ -54,25 +54,43 @@ impl Context {
             return Ok(value);
         }
 
-        let value = self.run_task(key).await?;
+        let mut cached_values = self.construct(key).await?;
+
+        #[expect(clippy::let_and_return)]
+        let value = if let Some(store_value) = self.store.get(key)
+            && cached_values.contains(store_value)
+        {
+            store_value.clone()
+        } else if let Some(cached_value) = cached_values.drain().next() {
+            cached_value
+        } else {
+            // TODO: Track task deps
+            let value = match key {
+                Key::Which(name) => {
+                    let path = task::task_which(self, name).await?;
+                    Value::Path(path)
+                }
+                Key::ReadFile(path) => {
+                    let bytes = task::task_read_file(self, path).await?;
+                    Value::Bytes(bytes)
+                }
+            };
+
+            // let deps = todo!();
+
+            // self.record(Trace {
+            //     key: key.clone(),
+            //     deps,
+            //     value: value.clone(),
+            // });
+
+            value
+        };
 
         self.store.insert(key.clone(), value.clone());
         self.done.insert(key.clone());
 
         Ok(value)
-    }
-
-    async fn run_task(&mut self, key: &Key) -> anyhow::Result<Value> {
-        Ok(match key {
-            Key::Which(name) => {
-                let path = task::task_which(self, name).await?;
-                Value::Path(path)
-            }
-            Key::ReadFile(path) => {
-                let bytes = task::task_read_file(self, path).await?;
-                Value::Bytes(bytes)
-            }
-        })
     }
 
     async fn record(&mut self, trace: Trace) -> anyhow::Result<()> {
@@ -92,7 +110,7 @@ impl Context {
             }
 
             for (dep_key, dep_value_hash) in trace.deps {
-                if dep_value_hash != self.build(&dep_key).await?.xxhash() {
+                if dep_value_hash != Box::pin(self.build(&dep_key)).await?.xxhash() {
                     continue 'trace;
                 }
             }
