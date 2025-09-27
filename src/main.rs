@@ -6,6 +6,7 @@ mod db;
 mod format;
 mod lint;
 mod old_build;
+mod task;
 mod util;
 
 use crate::cli::{Args, Command};
