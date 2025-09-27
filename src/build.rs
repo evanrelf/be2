@@ -15,7 +15,7 @@ use twox_hash::XxHash3_64;
 #[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Key {
     Which(String),
-    File(Utf8PathBuf),
+    ReadFile(Utf8PathBuf),
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -82,7 +82,7 @@ impl Context {
                 let path = task::task_which(self, name).await?;
                 Value::Path(path)
             }
-            Key::File(path) => {
+            Key::ReadFile(path) => {
                 let bytes = task::task_read_file(self, path).await?;
                 Value::Bytes(bytes)
             }

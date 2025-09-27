@@ -37,7 +37,7 @@ pub async fn task_which_stub(_cx: &mut Context, name: &str) -> anyhow::Result<Ut
 
 pub async fn read_file(cx: &mut Context, path: impl AsRef<Utf8Path>) -> anyhow::Result<Vec<u8>> {
     let path = path.as_ref();
-    let Value::Bytes(bytes) = cx.build(&Key::File(path.to_owned())).await? else {
+    let Value::Bytes(bytes) = cx.build(&Key::ReadFile(path.to_owned())).await? else {
         unreachable!()
     };
     Ok(bytes)
