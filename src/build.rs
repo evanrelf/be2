@@ -68,7 +68,7 @@ impl Context {
             return Ok(value);
         }
 
-        let value = self.fetch(key).await?;
+        let value = self.run_task(key).await?;
 
         self.store.insert(key.clone(), value.clone());
         self.done.insert(key.clone());
@@ -76,7 +76,7 @@ impl Context {
         Ok(value)
     }
 
-    async fn fetch(&mut self, key: &Key) -> anyhow::Result<Value> {
+    async fn run_task(&mut self, key: &Key) -> anyhow::Result<Value> {
         Ok(match key {
             Key::Which(name) => {
                 let path = task::task_which(self, name).await?;
