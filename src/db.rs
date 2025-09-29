@@ -79,21 +79,15 @@ pub trait Value: for<'de> Deserialize<'de> + Clone + Eq + Hash + Serialize {}
 
 impl<T> Value for T where T: for<'de> Deserialize<'de> + Clone + Eq + Hash + Serialize {}
 
-#[derive(Debug)]
-pub struct Trace<K, V> {
-    pub key: K,
-    pub deps: HashMap<K, u64, BuildHasherDefault<XxHash3_64>>,
-    pub value: V,
-}
-
-impl<K, V> PartialEq for Trace<K, V>
+#[derive(Debug, PartialEq)]
+pub struct Trace<K, V>
 where
     K: Key,
     V: Value,
 {
-    fn eq(&self, other: &Self) -> bool {
-        self.key == other.key && self.deps == other.deps && self.value == other.value
-    }
+    pub key: K,
+    pub deps: HashMap<K, u64, BuildHasherDefault<XxHash3_64>>,
+    pub value: V,
 }
 
 impl<K, V> Hash for Trace<K, V>
