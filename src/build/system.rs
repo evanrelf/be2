@@ -3,12 +3,7 @@ use bytes::Bytes;
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-    str,
-    sync::Arc,
-};
+use std::{collections::HashSet, hash::Hash, str, sync::Arc};
 
 #[derive(Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Key {
@@ -24,23 +19,23 @@ pub enum Value {
 
 pub struct Context {
     db: SqlitePool,
-    done: HashSet<Key>,
-    store: HashMap<Key, Value>,
+    done: papaya::HashSet<Key>,
+    store: papaya::HashMap<Key, Value>,
 }
 
 impl Context {
-    pub async fn build(&mut self, key: &Key) -> anyhow::Result<Value> {
-        if self.done.contains(key) {
+    pub async fn build(&self, key: &Key) -> anyhow::Result<Value> {
+        if self.done.pin().contains(key) {
             // SAFETY: If a key is marked as done, it has already been built, and its value is
             // present in the store.
-            let value = self.store.get(key).unwrap().clone();
+            let value = self.store.pin().get(key).unwrap().clone();
             return Ok(value);
         }
 
         let mut cached_values = self.construct(key).await?;
 
         #[expect(clippy::let_and_return)]
-        let value = if let Some(store_value) = self.store.get(key)
+        let value = if let Some(store_value) = self.store.pin().get(key)
             && cached_values.contains(store_value)
         {
             store_value.clone()
@@ -70,19 +65,19 @@ impl Context {
             value
         };
 
-        self.store.insert(key.clone(), value.clone());
-        self.done.insert(key.clone());
+        self.store.pin().insert(key.clone(), value.clone());
+        self.done.pin().insert(key.clone());
 
         Ok(value)
     }
 
-    async fn record(&mut self, trace: &Trace<Key, Value>) -> anyhow::Result<()> {
+    async fn record(&self, trace: &Trace<Key, Value>) -> anyhow::Result<()> {
         db::insert_trace(&self.db, trace).await?;
 
         Ok(())
     }
 
-    async fn construct(&mut self, key: &Key) -> anyhow::Result<HashSet<Value>> {
+    async fn construct(&self, key: &Key) -> anyhow::Result<HashSet<Value>> {
         let traces = db::fetch_traces(&self.db, Some(key)).await?;
 
         let mut matches = HashSet::new();
