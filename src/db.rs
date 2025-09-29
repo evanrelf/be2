@@ -16,6 +16,9 @@ pub async fn connect(path: &Utf8Path) -> sqlx::Result<SqlitePool> {
         SqliteConnectOptions::from_str(&format!("sqlite://{path}"))?
             .create_if_missing(true)
             .journal_mode(SqliteJournalMode::Wal)
+            // Higher performance, at the cost of durability. Does not call `fsync` after every
+            // transaction, so data loss is possible if the machine loses power and the OS hasn't
+            // flushed modifications to disk. This is an acceptable tradeoff for a cache like this.
             .synchronous(SqliteSynchronous::Normal),
     )
     .await?;
