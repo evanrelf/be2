@@ -1,17 +1,20 @@
-use crate::{db, task};
+use crate::{
+    db::{self, Trace},
+    task,
+};
 use bytes::Bytes;
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{
     collections::{HashMap, HashSet},
-    hash::{BuildHasherDefault, Hash, Hasher as _},
+    hash::{Hash, Hasher as _},
     str,
     sync::Arc,
 };
 use twox_hash::XxHash3_64;
 
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Key {
     Which(Arc<str>),
     ReadFile(Arc<Utf8Path>),
@@ -29,12 +32,6 @@ impl Value {
         self.hash(&mut hasher);
         hasher.finish()
     }
-}
-
-pub struct Trace<K, V> {
-    pub key: K,
-    pub deps: HashMap<K, u64, BuildHasherDefault<XxHash3_64>>,
-    pub value: V,
 }
 
 pub struct Context {
@@ -91,14 +88,14 @@ impl Context {
         Ok(value)
     }
 
-    async fn record(&mut self, trace: Trace<Key, Value>) -> anyhow::Result<()> {
-        insert_trace(&self.db, trace).await?;
+    async fn record(&mut self, trace: &Trace<Key, Value>) -> anyhow::Result<()> {
+        db::insert_trace(&self.db, trace).await?;
 
         Ok(())
     }
 
     async fn construct(&mut self, key: &Key) -> anyhow::Result<HashSet<Value>> {
-        let traces = fetch_traces(&self.db, Some(key)).await?;
+        let traces = db::fetch_traces(&self.db, Some(key)).await?;
 
         let mut matches = HashSet::new();
 
@@ -118,88 +115,4 @@ impl Context {
 
         Ok(matches)
     }
-}
-
-impl<K, V> TryFrom<Trace<K, V>> for db::Trace
-where
-    K: Serialize,
-    V: Serialize,
-{
-    type Error = anyhow::Error;
-    fn try_from(trace: Trace<K, V>) -> Result<Self, Self::Error> {
-        let mut key_buf = Vec::new();
-        ciborium::into_writer(&trace.key, &mut key_buf)?;
-        let key = Bytes::from(key_buf);
-
-        let mut deps = HashMap::default();
-        for (dep_key, dep_value_hash) in trace.deps {
-            let mut dep_key_buf = Vec::new();
-            ciborium::into_writer(&dep_key, &mut dep_key_buf)?;
-            let dep_key = Bytes::from(dep_key_buf);
-            deps.insert(dep_key, dep_value_hash);
-        }
-
-        let mut value_buf = Vec::new();
-        ciborium::into_writer(&trace.value, &mut value_buf)?;
-        let value = Bytes::from(value_buf);
-
-        Ok(db::Trace { key, deps, value })
-    }
-}
-
-impl<K, V> TryFrom<db::Trace> for Trace<K, V>
-where
-    K: for<'de> Deserialize<'de> + Eq + Hash,
-    V: for<'de> Deserialize<'de>,
-{
-    type Error = anyhow::Error;
-    fn try_from(db_trace: db::Trace) -> Result<Self, Self::Error> {
-        let key = ciborium::from_reader(&db_trace.key[..])?;
-
-        let mut deps = HashMap::default();
-        for (db_dep_key, dep_value_hash) in db_trace.deps {
-            let dep_key = ciborium::from_reader(&db_dep_key[..])?;
-            deps.insert(dep_key, dep_value_hash);
-        }
-
-        let value = ciborium::from_reader(&db_trace.value[..])?;
-
-        Ok(Trace { key, deps, value })
-    }
-}
-
-async fn fetch_traces<K, V>(db: &SqlitePool, key: Option<&K>) -> anyhow::Result<Vec<Trace<K, V>>>
-where
-    K: for<'de> Deserialize<'de> + Eq + Hash + Serialize,
-    V: for<'de> Deserialize<'de>,
-{
-    let db_key = if let Some(key) = key {
-        let mut db_key_buf = Vec::new();
-        ciborium::into_writer(key, &mut db_key_buf)?;
-        let db_key = Bytes::from(db_key_buf);
-        Some(db_key)
-    } else {
-        None
-    };
-
-    let db_traces = db::fetch_traces(db, db_key.as_ref()).await?;
-
-    let mut traces = Vec::with_capacity(db_traces.len());
-
-    for db_trace in db_traces {
-        let trace = Trace::try_from(db_trace)?;
-        traces.push(trace);
-    }
-
-    Ok(traces)
-}
-
-async fn insert_trace<K, V>(db: &SqlitePool, trace: Trace<K, V>) -> anyhow::Result<i64>
-where
-    K: Serialize,
-    V: Serialize,
-{
-    let db_trace = db::Trace::try_from(trace)?;
-    let trace_id = db::insert_trace(db, &db_trace).await?;
-    Ok(trace_id)
 }
