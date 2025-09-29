@@ -196,10 +196,10 @@ where
     Ok(trace_id)
 }
 
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::Bytes;
 
     #[tokio::test]
     async fn test_trace_roundtrip() -> anyhow::Result<()> {
@@ -226,4 +226,3 @@ mod tests {
         Ok(())
     }
 }
-*/
