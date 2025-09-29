@@ -1,7 +1,4 @@
-use crate::{
-    db::{self, Trace},
-    task,
-};
+use crate::{db, task, trace::Trace};
 use bytes::Bytes;
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};

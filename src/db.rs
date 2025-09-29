@@ -1,5 +1,5 @@
+use crate::trace::{Key, Trace, Value};
 use camino::Utf8Path;
-use serde::{Deserialize, Serialize};
 use sqlx::{
     Row as _, SqlitePool,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
@@ -69,41 +69,6 @@ pub async fn migrate(db: &SqlitePool) -> sqlx::Result<()> {
     .await?;
 
     Ok(())
-}
-
-pub trait Key: for<'de> Deserialize<'de> + Clone + Hash + Ord + Serialize {}
-
-impl<T> Key for T where T: for<'de> Deserialize<'de> + Clone + Hash + Ord + Serialize {}
-
-pub trait Value: for<'de> Deserialize<'de> + Clone + Eq + Hash + Serialize {}
-
-impl<T> Value for T where T: for<'de> Deserialize<'de> + Clone + Eq + Hash + Serialize {}
-
-#[derive(Debug, PartialEq)]
-pub struct Trace<K, V>
-where
-    K: Key,
-    V: Value,
-{
-    pub key: K,
-    pub deps: HashMap<K, u64, BuildHasherDefault<XxHash3_64>>,
-    pub value: V,
-}
-
-impl<K, V> Hash for Trace<K, V>
-where
-    K: Key,
-    V: Value,
-{
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.key.hash(state);
-        let mut deps = Vec::from_iter(&self.deps);
-        deps.sort_unstable();
-        for dep in &deps {
-            dep.hash(state);
-        }
-        self.value.hash(state);
-    }
 }
 
 pub async fn fetch_traces<K, V>(
