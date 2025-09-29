@@ -163,6 +163,7 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> sqlx::Result<i64> {
     let is_dupe = row.get(1);
 
     if is_dupe {
+        tracing::warn!(trace_id, "Trace already exists in database");
         return Ok(trace_id);
     }
 
