@@ -2,12 +2,9 @@
 
 mod build;
 mod cli;
-mod db;
 mod format;
 mod lint;
 mod old_build;
-mod task;
-mod trace;
 mod util;
 
 use crate::cli::{Args, Command};

@@ -1,4 +1,4 @@
-use crate::trace::{Key, Trace, Value};
+use crate::build::trace::{Key, Trace, Value};
 use camino::Utf8Path;
 use sqlx::{
     Row as _, SqlitePool,
