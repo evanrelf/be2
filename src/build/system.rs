@@ -1,15 +1,14 @@
-use crate::build::{db, task, trace::Trace};
+use crate::build::{db, hash::Xxhash as _, task, trace::Trace};
 use bytes::Bytes;
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{
     collections::{HashMap, HashSet},
-    hash::{Hash, Hasher as _},
+    hash::Hash,
     str,
     sync::Arc,
 };
-use twox_hash::XxHash3_64;
 
 #[derive(Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Key {
@@ -21,14 +20,6 @@ pub enum Key {
 pub enum Value {
     Path(Arc<Utf8Path>),
     Bytes(Bytes),
-}
-
-impl Value {
-    fn xxhash(&self) -> u64 {
-        let mut hasher = XxHash3_64::default();
-        self.hash(&mut hasher);
-        hasher.finish()
-    }
 }
 
 pub struct Context {
