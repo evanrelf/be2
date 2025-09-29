@@ -3,6 +3,7 @@
 mod build;
 mod cli;
 mod db;
+mod db2;
 mod format;
 mod lint;
 mod old_build;
