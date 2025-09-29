@@ -146,24 +146,28 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> sqlx::Result<i64> {
     trace.hash(&mut hasher);
     let trace_hash = &hasher.finish().to_le_bytes()[..];
 
-    let row = sqlx::query(
-        "
-        insert or ignore into traces (key, value, trace_hash) values ($1, $2, $3);
+    sqlx::query("insert or ignore into traces (key, value, trace_hash) values ($1, $2, $3)")
+        .bind(&trace.key[..])
+        .bind(&trace.value[..])
+        .bind(trace_hash)
+        .execute(&mut *tx)
+        .await?;
 
-        select id, changes() == 0 as is_dupe from traces where trace_hash = $3;
-        ",
-    )
-    .bind(&trace.key[..])
-    .bind(&trace.value[..])
-    .bind(trace_hash)
-    .fetch_one(&mut *tx)
-    .await?;
+    let row = sqlx::query("select id, changes() == 0 as is_dupe from traces where trace_hash = $3")
+        .bind(&trace.key[..])
+        .bind(&trace.value[..])
+        .bind(trace_hash)
+        .fetch_one(&mut *tx)
+        .await?;
 
     let trace_id = row.get(0);
     let is_dupe = row.get(1);
 
     if is_dupe {
         tracing::warn!(trace_id, "Trace already exists in database");
+
+        tx.rollback().await?;
+
         return Ok(trace_id);
     }
 
