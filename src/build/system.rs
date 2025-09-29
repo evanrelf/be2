@@ -24,6 +24,14 @@ pub struct Context {
 }
 
 impl Context {
+    pub fn new(db: SqlitePool) -> Self {
+        Self {
+            db,
+            done: papaya::HashSet::new(),
+            store: papaya::HashMap::new(),
+        }
+    }
+
     pub async fn build(&self, key: &Key) -> anyhow::Result<Value> {
         if self.done.pin().contains(key) {
             // SAFETY: If a key is marked as done, it has already been built, and its value is
