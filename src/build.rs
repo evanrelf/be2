@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{
     collections::{HashMap, HashSet},
-    hash::{BuildHasherDefault, Hash as _, Hasher as _},
+    hash::{BuildHasherDefault, Hash, Hasher as _},
     str,
     sync::Arc,
 };
@@ -31,10 +31,10 @@ impl Value {
     }
 }
 
-pub struct Trace {
-    pub key: Key,
-    pub deps: HashMap<Key, u64, BuildHasherDefault<XxHash3_64>>,
-    pub value: Value,
+pub struct Trace<K, V> {
+    pub key: K,
+    pub deps: HashMap<K, u64, BuildHasherDefault<XxHash3_64>>,
+    pub value: V,
 }
 
 pub struct Context {
@@ -91,7 +91,7 @@ impl Context {
         Ok(value)
     }
 
-    async fn record(&mut self, trace: Trace) -> anyhow::Result<()> {
+    async fn record(&mut self, trace: Trace<Key, Value>) -> anyhow::Result<()> {
         insert_trace(&self.db, trace).await?;
 
         Ok(())
@@ -120,9 +120,13 @@ impl Context {
     }
 }
 
-impl TryFrom<Trace> for db::Trace {
+impl<K, V> TryFrom<Trace<K, V>> for db::Trace
+where
+    K: Serialize,
+    V: Serialize,
+{
     type Error = anyhow::Error;
-    fn try_from(trace: Trace) -> Result<Self, Self::Error> {
+    fn try_from(trace: Trace<K, V>) -> Result<Self, Self::Error> {
         let mut key_buf = Vec::new();
         ciborium::into_writer(&trace.key, &mut key_buf)?;
         let key = Bytes::from(key_buf);
@@ -143,7 +147,11 @@ impl TryFrom<Trace> for db::Trace {
     }
 }
 
-impl TryFrom<db::Trace> for Trace {
+impl<K, V> TryFrom<db::Trace> for Trace<K, V>
+where
+    K: for<'de> Deserialize<'de> + Eq + Hash,
+    V: for<'de> Deserialize<'de>,
+{
     type Error = anyhow::Error;
     fn try_from(db_trace: db::Trace) -> Result<Self, Self::Error> {
         let key = ciborium::from_reader(&db_trace.key[..])?;
@@ -160,7 +168,11 @@ impl TryFrom<db::Trace> for Trace {
     }
 }
 
-async fn fetch_traces(db: &SqlitePool, key: Option<&Key>) -> anyhow::Result<Vec<Trace>> {
+async fn fetch_traces<K, V>(db: &SqlitePool, key: Option<&K>) -> anyhow::Result<Vec<Trace<K, V>>>
+where
+    K: for<'de> Deserialize<'de> + Eq + Hash + Serialize,
+    V: for<'de> Deserialize<'de>,
+{
     let db_key = if let Some(key) = key {
         let mut db_key_buf = Vec::new();
         ciborium::into_writer(key, &mut db_key_buf)?;
@@ -182,7 +194,11 @@ async fn fetch_traces(db: &SqlitePool, key: Option<&Key>) -> anyhow::Result<Vec<
     Ok(traces)
 }
 
-async fn insert_trace(db: &SqlitePool, trace: Trace) -> anyhow::Result<i64> {
+async fn insert_trace<K, V>(db: &SqlitePool, trace: Trace<K, V>) -> anyhow::Result<i64>
+where
+    K: Serialize,
+    V: Serialize,
+{
     let db_trace = db::Trace::try_from(trace)?;
     let trace_id = db::insert_trace(db, &db_trace).await?;
     Ok(trace_id)
