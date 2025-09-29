@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{collections::HashSet, hash::Hash, str, sync::Arc};
 
-#[derive(Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Key {
     Which(Arc<str>),
     ReadFile(Arc<Utf8Path>),
@@ -91,12 +91,11 @@ impl Context {
         let mut matches = HashSet::new();
 
         'trace: for trace in traces {
-            if trace.key != *key {
-                continue 'trace;
-            }
+            debug_assert_eq!(&trace.key, key);
 
             for (dep_key, dep_value_hash) in trace.deps {
-                if dep_value_hash != Box::pin(self.build(&dep_key)).await?.xxhash() {
+                let dep_value = Box::pin(self.build(&dep_key)).await?;
+                if dep_value_hash != dep_value.xxhash() {
                     continue 'trace;
                 }
             }

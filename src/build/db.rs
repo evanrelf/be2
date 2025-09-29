@@ -1,4 +1,7 @@
-use crate::build::trace::{Key, Trace, Value};
+use crate::build::{
+    hash::Xxhash as _,
+    trace::{Key, Trace, Value},
+};
 use camino::Utf8Path;
 use sqlx::{
     Row as _, SqlitePool,
@@ -83,12 +86,12 @@ where
         let mut key_bytes = Vec::new();
         ciborium::into_writer(key, &mut key_bytes)?;
 
-        sqlx::query("select id, null, value from traces where key = $1")
+        sqlx::query("select id, null, value, trace_hash from traces where key = $1")
             .bind(&key_bytes)
             .fetch_all(db)
             .await?
     } else {
-        sqlx::query("select id, key, value from traces")
+        sqlx::query("select id, key, value, trace_hash from traces")
             .fetch_all(db)
             .await?
     };
@@ -127,7 +130,18 @@ where
             deps.insert(dep_key, dep_value_hash);
         }
 
-        traces.push(Trace { key, deps, value });
+        let trace_hash: Vec<u8> = trace_row.get(3);
+        let trace_hash: [u8; 8] = match trace_hash.try_into() {
+            Ok(value) => value,
+            Err(bytes) => anyhow::bail!("expected 8 bytes, found {} bytes", bytes.len()),
+        };
+        let trace_hash = u64::from_le_bytes(trace_hash);
+
+        let trace = Trace { key, deps, value };
+
+        debug_assert_eq!(trace_hash, trace.xxhash());
+
+        traces.push(trace);
     }
 
     Ok(traces)
