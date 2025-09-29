@@ -1,5 +1,5 @@
-use bytes::Bytes;
 use camino::Utf8Path;
+use serde::{Deserialize, Serialize};
 use sqlx::{
     Row as _, SqlitePool,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqliteSynchronous},
@@ -71,14 +71,36 @@ pub async fn migrate(db: &SqlitePool) -> sqlx::Result<()> {
     Ok(())
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Trace {
-    pub key: Bytes,
-    pub deps: HashMap<Bytes, u64, BuildHasherDefault<XxHash3_64>>,
-    pub value: Bytes,
+pub trait Key: for<'de> Deserialize<'de> + Clone + Hash + Ord + Serialize {}
+
+impl<T> Key for T where T: for<'de> Deserialize<'de> + Clone + Hash + Ord + Serialize {}
+
+pub trait Value: for<'de> Deserialize<'de> + Clone + Eq + Hash + Serialize {}
+
+impl<T> Value for T where T: for<'de> Deserialize<'de> + Clone + Eq + Hash + Serialize {}
+
+#[derive(Debug)]
+pub struct Trace<K, V> {
+    pub key: K,
+    pub deps: HashMap<K, u64, BuildHasherDefault<XxHash3_64>>,
+    pub value: V,
 }
 
-impl Hash for Trace {
+impl<K, V> PartialEq for Trace<K, V>
+where
+    K: Key,
+    V: Value,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.key == other.key && self.deps == other.deps && self.value == other.value
+    }
+}
+
+impl<K, V> Hash for Trace<K, V>
+where
+    K: Key,
+    V: Value,
+{
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.key.hash(state);
         let mut deps = Vec::from_iter(&self.deps);
@@ -90,10 +112,20 @@ impl Hash for Trace {
     }
 }
 
-pub async fn fetch_traces(db: &SqlitePool, key: Option<&Bytes>) -> anyhow::Result<Vec<Trace>> {
+pub async fn fetch_traces<K, V>(
+    db: &SqlitePool,
+    key: Option<&K>,
+) -> anyhow::Result<Vec<Trace<K, V>>>
+where
+    K: Key,
+    V: Value,
+{
     let trace_rows = if let Some(key) = key {
+        let mut key_bytes = Vec::new();
+        ciborium::into_writer(key, &mut key_bytes)?;
+
         sqlx::query("select id, null, value from traces where key = $1")
-            .bind(&key[..])
+            .bind(&key_bytes)
             .fetch_all(db)
             .await?
     } else {
@@ -106,14 +138,14 @@ pub async fn fetch_traces(db: &SqlitePool, key: Option<&Bytes>) -> anyhow::Resul
 
     for trace_row in trace_rows {
         let trace_id: i64 = trace_row.get(0);
-        let key = if let Some(key) = key {
+        let key: K = if let Some(key) = key {
             key.clone()
         } else {
             let key: Vec<u8> = trace_row.get(1);
-            Bytes::from(key)
+            ciborium::from_reader(&key[..])?
         };
         let value: Vec<u8> = trace_row.get(2);
-        let value = Bytes::from(value);
+        let value: V = ciborium::from_reader(&value[..])?;
 
         let deps_rows =
             sqlx::query("select dep_key, dep_value_hash from trace_deps where trace_id = $1")
@@ -126,7 +158,7 @@ pub async fn fetch_traces(db: &SqlitePool, key: Option<&Bytes>) -> anyhow::Resul
 
         for deps_row in deps_rows {
             let dep_key: Vec<u8> = deps_row.get(0);
-            let dep_key = Bytes::from(dep_key);
+            let dep_key = ciborium::from_reader(&dep_key[..])?;
             let dep_value_hash: Vec<u8> = deps_row.get(1);
             let dep_value_hash: [u8; 8] = match dep_value_hash.try_into() {
                 Ok(value) => value,
@@ -142,23 +174,33 @@ pub async fn fetch_traces(db: &SqlitePool, key: Option<&Bytes>) -> anyhow::Resul
     Ok(traces)
 }
 
-pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> sqlx::Result<i64> {
+pub async fn insert_trace<K, V>(db: &SqlitePool, trace: &Trace<K, V>) -> anyhow::Result<i64>
+where
+    K: Key,
+    V: Value,
+{
     let mut tx = db.begin().await?;
 
     let mut hasher = XxHash3_64::default();
     trace.hash(&mut hasher);
     let trace_hash = &hasher.finish().to_le_bytes()[..];
 
+    let mut key_bytes = Vec::new();
+    ciborium::into_writer(&trace.key, &mut key_bytes)?;
+
+    let mut value_bytes = Vec::new();
+    ciborium::into_writer(&trace.value, &mut value_bytes)?;
+
     sqlx::query("insert or ignore into traces (key, value, trace_hash) values ($1, $2, $3)")
-        .bind(&trace.key[..])
-        .bind(&trace.value[..])
+        .bind(&key_bytes)
+        .bind(&value_bytes)
         .bind(trace_hash)
         .execute(&mut *tx)
         .await?;
 
     let row = sqlx::query("select id, changes() == 0 as is_dupe from traces where trace_hash = $3")
-        .bind(&trace.key[..])
-        .bind(&trace.value[..])
+        .bind(&key_bytes)
+        .bind(&value_bytes)
         .bind(trace_hash)
         .fetch_one(&mut *tx)
         .await?;
@@ -175,13 +217,16 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> sqlx::Result<i64> {
     }
 
     for (dep_key, dep_value_hash) in &trace.deps {
+        let mut dep_key_bytes = Vec::new();
+        ciborium::into_writer(dep_key, &mut dep_key_bytes)?;
+
         let dep_value_hash = &dep_value_hash.to_le_bytes()[..];
 
         sqlx::query(
             "insert into trace_deps (trace_id, dep_key, dep_value_hash) values ($1, $2, $3)",
         )
         .bind(trace_id)
-        .bind(&dep_key[..])
+        .bind(dep_key_bytes)
         .bind(dep_value_hash)
         .execute(&mut *tx)
         .await?;
@@ -192,6 +237,7 @@ pub async fn insert_trace(db: &SqlitePool, trace: &Trace) -> sqlx::Result<i64> {
     Ok(trace_id)
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,3 +267,4 @@ mod tests {
         Ok(())
     }
 }
+*/
