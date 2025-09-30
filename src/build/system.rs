@@ -29,8 +29,8 @@ pub enum Value {
 
 pub struct Context {
     db: SqlitePool,
-    done: papaya::HashSet<Key>,
-    store: papaya::HashMap<Key, SetOnce<Value>>,
+    done: papaya::HashMap<Key, SetOnce<()>>,
+    store: papaya::HashMap<Key, Value>,
     debug_use_stubs: AtomicBool,
     debug_task_count: AtomicUsize,
 }
@@ -39,7 +39,7 @@ impl Context {
     pub fn new(db: SqlitePool) -> Self {
         Self {
             db,
-            done: papaya::HashSet::new(),
+            done: papaya::HashMap::new(),
             store: papaya::HashMap::new(),
             debug_use_stubs: AtomicBool::new(false),
             debug_task_count: AtomicUsize::new(0),
@@ -47,22 +47,28 @@ impl Context {
     }
 
     pub async fn build(&self, key: &Key) -> anyhow::Result<Value> {
-        if self.done.pin().contains(key) {
+        let done = self.done.pin();
+
+        let mut is_done = true;
+
+        let barrier = done.get_or_insert_with(key.clone(), || {
+            is_done = false;
+            SetOnce::new()
+        });
+
+        if is_done {
+            barrier.wait().await;
             // SAFETY: The key is marked as done, so it has already been built, and its value is
             // present in the store.
-            let store = self.store.pin();
-            let thunk = store.get(key).unwrap();
-            let value = thunk.get().unwrap().clone();
+            let value = self.store.pin().get(key).unwrap().clone();
             return Ok(value);
         }
 
         let mut cached_values = self.construct(key).await?;
 
         #[expect(clippy::let_and_return)]
-        let value = if let Some(store_value) = self.store.pin().get(key).map(|thunk| {
-            // TODO: Integrate thunks
-            thunk.get().unwrap()
-        }) && cached_values.contains(store_value)
+        let value = if let Some(store_value) = self.store.pin().get(key)
+            && cached_values.contains(store_value)
         {
             store_value.clone()
         } else if let Some(cached_value) = cached_values.drain().next() {
@@ -105,10 +111,10 @@ impl Context {
             value
         };
 
-        self.store
-            .pin()
-            .insert(key.clone(), SetOnce::new_with(Some(value.clone())));
-        self.done.pin().insert(key.clone());
+        self.store.pin().insert(key.clone(), value.clone());
+
+        // SAFETY: The key has not been marked as done yet, and no other tasks will attempt to.
+        barrier.set(()).unwrap();
 
         Ok(value)
     }
@@ -161,27 +167,27 @@ mod tests {
         let expected_store = papaya::HashMap::new();
         expected_store.pin().insert(
             Key::ReadFile(Arc::from(Utf8Path::new("/files"))),
-            SetOnce::new_with(Some(Value::Bytes(Bytes::from(
-                "/files/a\n/files/a\n/files/b\n",
-            )))),
+            Value::Bytes(Bytes::from("/files/a\n/files/a\n/files/b\n")),
         );
         expected_store.pin().insert(
             Key::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
-            SetOnce::new_with(Some(Value::Bytes(Bytes::from("AAAA\n")))),
+            Value::Bytes(Bytes::from("AAAA\n")),
         );
         expected_store.pin().insert(
             Key::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
-            SetOnce::new_with(Some(Value::Bytes(Bytes::from("BBBB\n")))),
+            Value::Bytes(Bytes::from("BBBB\n")),
         );
         expected_store.pin().insert(
             Key::Concat(Arc::from(Utf8Path::new("/files"))),
-            SetOnce::new_with(Some(Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")))),
+            Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")),
         );
         assert_eq!(cx.store, expected_store);
 
-        let expected_done = papaya::HashSet::new();
+        let expected_done = papaya::HashMap::new();
         for key in expected_store.pin().keys() {
-            expected_done.pin().insert(key.clone());
+            expected_done
+                .pin()
+                .insert(key.clone(), SetOnce::new_with(Some(())));
         }
         assert_eq!(cx.done, expected_done);
 
