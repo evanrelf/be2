@@ -126,7 +126,6 @@ name = "be2"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "boxcar",
  "bytes",
  "camino",
  "ciborium",
@@ -158,12 +157,6 @@ checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
 ]
-
-[[package]]
-name = "boxcar"
-version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36f64beae40a84da1b4b26ff2761a5b895c12adc41dc25aaee1c4f2bbfe97a6e"
 
 [[package]]
 name = "byteorder"
