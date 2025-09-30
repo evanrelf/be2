@@ -28,7 +28,7 @@ pub enum Value {
     Bytes(Bytes),
 }
 
-pub struct Context {
+pub struct BuildContext {
     db: SqlitePool,
     done: papaya::HashMap<Key, SetOnce<()>>,
     store: papaya::HashMap<Key, Value>,
@@ -36,7 +36,7 @@ pub struct Context {
     debug_task_count: AtomicUsize,
 }
 
-impl Context {
+impl BuildContext {
     pub fn new(db: SqlitePool) -> Self {
         Self {
             db,
@@ -158,7 +158,7 @@ mod tests {
         let db = SqlitePool::connect(":memory:").await?;
         db::migrate(&db).await?;
 
-        let cx = Context::new(db);
+        let cx = BuildContext::new(db);
         cx.debug_use_stubs.store(true, Ordering::SeqCst);
 
         let path = Utf8Path::new("/files");
