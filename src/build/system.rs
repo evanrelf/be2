@@ -36,17 +36,17 @@ pub struct BuildContext {
 }
 
 impl BuildContext {
-    pub fn new(db: SqlitePool) -> Self {
-        Self {
+    pub fn new(db: SqlitePool) -> Arc<Self> {
+        Arc::new(Self {
             db,
             done: papaya::HashMap::new(),
             store: papaya::HashMap::new(),
             debug_use_stubs: AtomicBool::new(false),
             debug_task_count: AtomicUsize::new(0),
-        }
+        })
     }
 
-    pub async fn build(&self, key: Key) -> anyhow::Result<Value> {
+    pub async fn build(self: &Arc<Self>, key: Key) -> anyhow::Result<Value> {
         let done = self.done.pin_owned();
 
         let mut is_done = true;
@@ -80,22 +80,22 @@ impl BuildContext {
             let value = match &key {
                 Key::Which(name) => {
                     let path = if self.debug_use_stubs.load(Ordering::SeqCst) {
-                        task::task_which_stub(self, name).await?
+                        task::task_which_stub(self.clone(), name).await?
                     } else {
-                        task::task_which(self, name).await?
+                        task::task_which(self.clone(), name).await?
                     };
                     Value::Path(path)
                 }
                 Key::ReadFile(path) => {
                     let bytes = if self.debug_use_stubs.load(Ordering::SeqCst) {
-                        task::task_read_file_stub(self, path).await?
+                        task::task_read_file_stub(self.clone(), path).await?
                     } else {
-                        task::task_read_file(self, path).await?
+                        task::task_read_file(self.clone(), path).await?
                     };
                     Value::Bytes(bytes)
                 }
                 Key::Concat(path) => {
-                    let bytes = Box::pin(task::task_concat(self, path)).await?;
+                    let bytes = Box::pin(task::task_concat(self.clone(), path)).await?;
                     Value::Bytes(bytes)
                 }
             };
@@ -125,7 +125,7 @@ impl BuildContext {
         Ok(())
     }
 
-    async fn construct(&self, key: &Key) -> anyhow::Result<HashSet<Value>> {
+    async fn construct(self: &Arc<Self>, key: &Key) -> anyhow::Result<HashSet<Value>> {
         let traces = db::fetch_traces(&self.db, Some(key)).await?;
 
         let mut matches = HashSet::new();
@@ -161,7 +161,7 @@ mod tests {
 
         let path = Utf8Path::new("/files");
 
-        let result = task::concat(&cx, path).await?;
+        let result = task::concat(cx.clone(), path).await?;
         assert_eq!(result, Bytes::from("AAAA\nAAAA\nBBBB\n"));
 
         let expected_store = papaya::HashMap::new();
