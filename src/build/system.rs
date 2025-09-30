@@ -4,6 +4,7 @@ use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{collections::HashSet, hash::Hash, str, sync::Arc};
+use tokio::sync::SetOnce;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Key {
@@ -20,7 +21,7 @@ pub enum Value {
 pub struct Context {
     db: SqlitePool,
     done: papaya::HashSet<Key>,
-    store: papaya::HashMap<Key, Value>,
+    store: papaya::HashMap<Key, SetOnce<Value>>,
 }
 
 impl Context {
@@ -34,17 +35,21 @@ impl Context {
 
     pub async fn build(&self, key: &Key) -> anyhow::Result<Value> {
         if self.done.pin().contains(key) {
-            // SAFETY: If a key is marked as done, it has already been built, and its value is
+            // SAFETY: The key is marked as done, so it has already been built, and its value is
             // present in the store.
-            let value = self.store.pin().get(key).unwrap().clone();
+            let store = self.store.pin();
+            let thunk = store.get(key).unwrap();
+            let value = thunk.get().unwrap().clone();
             return Ok(value);
         }
 
         let mut cached_values = self.construct(key).await?;
 
         #[expect(clippy::let_and_return)]
-        let value = if let Some(store_value) = self.store.pin().get(key)
-            && cached_values.contains(store_value)
+        let value = if let Some(store_value) = self.store.pin().get(key).map(|thunk| {
+            // TODO: Integrate thunks
+            thunk.get().unwrap()
+        }) && cached_values.contains(store_value)
         {
             store_value.clone()
         } else if let Some(cached_value) = cached_values.drain().next() {
@@ -73,7 +78,9 @@ impl Context {
             value
         };
 
-        self.store.pin().insert(key.clone(), value.clone());
+        self.store
+            .pin()
+            .insert(key.clone(), SetOnce::new_with(Some(value.clone())));
         self.done.pin().insert(key.clone());
 
         Ok(value)
