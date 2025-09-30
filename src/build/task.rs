@@ -26,10 +26,10 @@ pub async fn task_which(_cx: &Context, name: &str) -> anyhow::Result<Arc<Utf8Pat
 }
 
 #[expect(clippy::unused_async)]
-pub async fn task_which_stub(_cx: &Context, name: &str) -> anyhow::Result<Utf8PathBuf> {
+pub async fn task_which_stub(_cx: &Context, name: &str) -> anyhow::Result<Arc<Utf8Path>> {
     let path = match name {
-        "sh" => Utf8PathBuf::from("/bin/sh"),
-        "vim" => Utf8PathBuf::from("/usr/bin/vim"),
+        "sh" => Arc::from(Utf8Path::new("/bin/sh")),
+        "vim" => Arc::from(Utf8Path::new("/usr/bin/vim")),
         _ => anyhow::bail!("Failed to find path to `{name}`"),
     };
 
@@ -50,7 +50,7 @@ pub async fn task_read_file(_cx: &Context, path: &Utf8Path) -> anyhow::Result<By
 }
 
 #[expect(clippy::unused_async)]
-pub async fn task_read_file_stub(_cx: &Context, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+pub async fn task_read_file_stub(_cx: &Context, path: &Utf8Path) -> anyhow::Result<Bytes> {
     let bytes = match path.as_str() {
         "/files" => Vec::from(b"/files/a\n/files/a\n/files/b\n"),
         "/files/a" => Vec::from(b"AAAA\n"),
@@ -58,10 +58,10 @@ pub async fn task_read_file_stub(_cx: &Context, path: &Utf8Path) -> anyhow::Resu
         "/dev/null" => Vec::new(),
         _ => anyhow::bail!("Failed to read file at '{path}'"),
     };
-    Ok(bytes)
+    Ok(Bytes::from(bytes))
 }
 
-pub async fn concat(cx: &Context, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
+pub async fn concat(cx: &Context, path: &Utf8Path) -> anyhow::Result<Bytes> {
     let paths = {
         let bytes = read_file(cx, path).await?;
         let string = str::from_utf8(&bytes)?;
@@ -75,5 +75,5 @@ pub async fn concat(cx: &Context, path: &Utf8Path) -> anyhow::Result<Vec<u8>> {
         output.extend(bytes);
     }
 
-    Ok(output)
+    Ok(Bytes::from(output))
 }

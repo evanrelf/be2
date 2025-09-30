@@ -205,59 +205,6 @@ async fn concat(ctx: Arc<BuildCtx>, path: &Utf8Path) -> anyhow::Result<Vec<u8>> 
     Ok(output)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_stubs() -> anyhow::Result<()> {
-        let ctx = BuildCtx::new();
-        ctx.debug_stubs.store(true, Ordering::SeqCst);
-
-        let path = Utf8PathBuf::from("/files");
-
-        let result = concat(Arc::clone(&ctx), &path).await?;
-        assert_eq!(&result, b"AAAA\nAAAA\nBBBB\n");
-
-        let expected_store = papaya::HashMap::new();
-        expected_store.pin().insert(
-            Key::File(Utf8PathBuf::from("/files")),
-            OnceCell::from(Value::Bytes(Vec::from(b"/files/a\n/files/a\n/files/b\n"))),
-        );
-        expected_store.pin().insert(
-            Key::File(Utf8PathBuf::from("/files/a")),
-            OnceCell::from(Value::Bytes(Vec::from(b"AAAA\n"))),
-        );
-        expected_store.pin().insert(
-            Key::File(Utf8PathBuf::from("/files/b")),
-            OnceCell::from(Value::Bytes(Vec::from(b"BBBB\n"))),
-        );
-        assert_eq!(ctx.store, expected_store);
-
-        let expected_done = papaya::HashSet::new();
-        for key in expected_store.pin().keys() {
-            expected_done.pin().insert(key.clone());
-        }
-        assert_eq!(ctx.done, expected_done);
-
-        // Should match number of files read, not number of file reads; subsequent reads should be
-        // cached.
-        assert_eq!(ctx.debug_task_counter.load(Ordering::SeqCst), 3);
-
-        Ok(())
-    }
-
-    #[ignore = "requires manually setting up files"]
-    #[tokio::test]
-    async fn test_io() -> anyhow::Result<()> {
-        let ctx = BuildCtx::new();
-        let path = Utf8PathBuf::from("/Users/evanrelf/Desktop/files");
-        let result = concat(ctx, &path).await?;
-        assert_eq!(&result, b"AAAA\nAAAA\nBBBB\n");
-        Ok(())
-    }
-}
-
 // Represent changes to build system code by making all builds depend on binary as input!
 
 // Need to represent volatile (i.e. uncached) tasks, such as querying compiler version.

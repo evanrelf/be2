@@ -3,7 +3,15 @@ use bytes::Bytes;
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use std::{collections::HashSet, hash::Hash, str, sync::Arc};
+use std::{
+    collections::HashSet,
+    hash::Hash,
+    str,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
+};
 use tokio::sync::SetOnce;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -12,7 +20,7 @@ pub enum Key {
     ReadFile(Arc<Utf8Path>),
 }
 
-#[derive(Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Value {
     Path(Arc<Utf8Path>),
     Bytes(Bytes),
@@ -22,6 +30,8 @@ pub struct Context {
     db: SqlitePool,
     done: papaya::HashSet<Key>,
     store: papaya::HashMap<Key, SetOnce<Value>>,
+    debug_use_stubs: AtomicBool,
+    debug_task_count: AtomicUsize,
 }
 
 impl Context {
@@ -30,6 +40,8 @@ impl Context {
             db,
             done: papaya::HashSet::new(),
             store: papaya::HashMap::new(),
+            debug_use_stubs: AtomicBool::new(false),
+            debug_task_count: AtomicUsize::new(0),
         }
     }
 
@@ -55,14 +67,24 @@ impl Context {
         } else if let Some(cached_value) = cached_values.drain().next() {
             cached_value
         } else {
+            self.debug_task_count.fetch_add(1, Ordering::SeqCst);
+
             // TODO: Track task deps
             let value = match key {
                 Key::Which(name) => {
-                    let path = task::task_which(self, name).await?;
+                    let path = if self.debug_use_stubs.load(Ordering::SeqCst) {
+                        task::task_which_stub(self, name).await?
+                    } else {
+                        task::task_which(self, name).await?
+                    };
                     Value::Path(path)
                 }
                 Key::ReadFile(path) => {
-                    let bytes = task::task_read_file(self, path).await?;
+                    let bytes = if self.debug_use_stubs.load(Ordering::SeqCst) {
+                        task::task_read_file_stub(self, path).await?
+                    } else {
+                        task::task_read_file(self, path).await?
+                    };
                     Value::Bytes(bytes)
                 }
             };
@@ -111,5 +133,53 @@ impl Context {
         }
 
         Ok(matches)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_stubs() -> anyhow::Result<()> {
+        let db = SqlitePool::connect(":memory:").await?;
+        db::migrate(&db).await?;
+
+        let cx = Context::new(db);
+        cx.debug_use_stubs.store(true, Ordering::SeqCst);
+
+        let path = Utf8Path::new("/files");
+
+        let result = task::concat(&cx, path).await?;
+        assert_eq!(result, Bytes::from("AAAA\nAAAA\nBBBB\n"));
+
+        let expected_store = papaya::HashMap::new();
+        expected_store.pin().insert(
+            Key::ReadFile(Arc::from(Utf8Path::new("/files"))),
+            SetOnce::new_with(Some(Value::Bytes(Bytes::from(
+                "/files/a\n/files/a\n/files/b\n",
+            )))),
+        );
+        expected_store.pin().insert(
+            Key::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
+            SetOnce::new_with(Some(Value::Bytes(Bytes::from("AAAA\n")))),
+        );
+        expected_store.pin().insert(
+            Key::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
+            SetOnce::new_with(Some(Value::Bytes(Bytes::from("BBBB\n")))),
+        );
+        assert_eq!(cx.store, expected_store);
+
+        let expected_done = papaya::HashSet::new();
+        for key in expected_store.pin().keys() {
+            expected_done.pin().insert(key.clone());
+        }
+        assert_eq!(cx.done, expected_done);
+
+        // Should match number of files read, not number of file reads; subsequent reads should be
+        // cached.
+        assert_eq!(cx.debug_task_count.load(Ordering::SeqCst), 3);
+
+        Ok(())
     }
 }
