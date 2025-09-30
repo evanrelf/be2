@@ -77,6 +77,7 @@ pub async fn task_concat(cx: &Context, path: &Utf8Path) -> anyhow::Result<Bytes>
 
     let mut output = Vec::new();
 
+    // TODO: Read files concurrently
     for path in paths {
         let bytes = read_file(cx, path).await?;
         output.extend(bytes);
