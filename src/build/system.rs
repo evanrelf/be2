@@ -18,6 +18,7 @@ use tokio::sync::SetOnce;
 pub enum Key {
     Which(Arc<str>),
     ReadFile(Arc<Utf8Path>),
+    Concat(Arc<Utf8Path>),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -85,6 +86,10 @@ impl Context {
                     } else {
                         task::task_read_file(self, path).await?
                     };
+                    Value::Bytes(bytes)
+                }
+                Key::Concat(path) => {
+                    let bytes = Box::pin(task::task_concat(self, path)).await?;
                     Value::Bytes(bytes)
                 }
             };
@@ -168,6 +173,10 @@ mod tests {
             Key::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
             SetOnce::new_with(Some(Value::Bytes(Bytes::from("BBBB\n")))),
         );
+        expected_store.pin().insert(
+            Key::Concat(Arc::from(Utf8Path::new("/files"))),
+            SetOnce::new_with(Some(Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")))),
+        );
         assert_eq!(cx.store, expected_store);
 
         let expected_done = papaya::HashSet::new();
@@ -176,9 +185,7 @@ mod tests {
         }
         assert_eq!(cx.done, expected_done);
 
-        // Should match number of files read, not number of file reads; subsequent reads should be
-        // cached.
-        assert_eq!(cx.debug_task_count.load(Ordering::SeqCst), 3);
+        assert_eq!(cx.debug_task_count.load(Ordering::SeqCst), 4);
 
         Ok(())
     }

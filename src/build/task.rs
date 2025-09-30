@@ -62,6 +62,13 @@ pub async fn task_read_file_stub(_cx: &Context, path: &Utf8Path) -> anyhow::Resu
 }
 
 pub async fn concat(cx: &Context, path: &Utf8Path) -> anyhow::Result<Bytes> {
+    let Value::Bytes(path) = cx.build(&Key::Concat(Arc::from(path))).await? else {
+        unreachable!()
+    };
+    Ok(path)
+}
+
+pub async fn task_concat(cx: &Context, path: &Utf8Path) -> anyhow::Result<Bytes> {
     let paths = {
         let bytes = read_file(cx, path).await?;
         let string = str::from_utf8(&bytes)?;
