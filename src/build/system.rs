@@ -48,7 +48,7 @@ impl BuildContext {
     }
 
     #[async_recursion]
-    pub async fn build(&self, key: &Key) -> anyhow::Result<Value> {
+    pub async fn build(&self, key: Key) -> anyhow::Result<Value> {
         let done = self.done.pin_owned();
 
         let mut is_done = true;
@@ -62,14 +62,14 @@ impl BuildContext {
             barrier.wait().await;
             // SAFETY: The key is marked as done, so it has already been built, and its value is
             // present in the store.
-            let value = self.store.pin().get(key).unwrap().clone();
+            let value = self.store.pin().get(&key).unwrap().clone();
             return Ok(value);
         }
 
-        let mut cached_values = self.construct(key).await?;
+        let mut cached_values = self.construct(&key).await?;
 
         #[expect(clippy::let_and_return)]
-        let value = if let Some(store_value) = self.store.pin().get(key)
+        let value = if let Some(store_value) = self.store.pin().get(&key)
             && cached_values.contains(store_value)
         {
             store_value.clone()
@@ -79,7 +79,7 @@ impl BuildContext {
             self.debug_task_count.fetch_add(1, Ordering::SeqCst);
 
             // TODO: Track task deps
-            let value = match key {
+            let value = match &key {
                 Key::Which(name) => {
                     let path = if self.debug_use_stubs.load(Ordering::SeqCst) {
                         task::task_which_stub(self, name).await?
@@ -136,7 +136,7 @@ impl BuildContext {
             debug_assert_eq!(&trace.key, key);
 
             for (dep_key, dep_value_hash) in trace.deps {
-                let dep_value = self.build(&dep_key).await?;
+                let dep_value = self.build(dep_key).await?;
                 if dep_value_hash != dep_value.xxhash() {
                     continue 'trace;
                 }

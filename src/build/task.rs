@@ -5,7 +5,7 @@ use std::{str, sync::Arc};
 use tokio::{fs, process::Command};
 
 pub async fn which(cx: &BuildContext, name: &str) -> anyhow::Result<Arc<Utf8Path>> {
-    let Value::Path(path) = cx.build(&Key::Which(Arc::from(name))).await? else {
+    let Value::Path(path) = cx.build(Key::Which(Arc::from(name))).await? else {
         unreachable!()
     };
     Ok(path)
@@ -38,7 +38,7 @@ pub async fn task_which_stub(_cx: &BuildContext, name: &str) -> anyhow::Result<A
 
 pub async fn read_file(cx: &BuildContext, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
     let path = path.as_ref();
-    let Value::Bytes(bytes) = cx.build(&Key::ReadFile(Arc::from(path))).await? else {
+    let Value::Bytes(bytes) = cx.build(Key::ReadFile(Arc::from(path))).await? else {
         unreachable!()
     };
     Ok(bytes)
@@ -62,7 +62,7 @@ pub async fn task_read_file_stub(_cx: &BuildContext, path: &Utf8Path) -> anyhow:
 }
 
 pub async fn concat(cx: &BuildContext, path: &Utf8Path) -> anyhow::Result<Bytes> {
-    let Value::Bytes(path) = cx.build(&Key::Concat(Arc::from(path))).await? else {
+    let Value::Bytes(path) = cx.build(Key::Concat(Arc::from(path))).await? else {
         unreachable!()
     };
     Ok(path)
