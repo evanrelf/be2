@@ -1,4 +1,5 @@
 use crate::build::{db, hash::Xxhash as _, task, trace::Trace};
+use async_recursion::async_recursion;
 use bytes::Bytes;
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
@@ -46,7 +47,8 @@ impl BuildContext {
         })
     }
 
-    pub async fn build(self: &Arc<Self>, key: Key) -> anyhow::Result<Value> {
+    #[async_recursion]
+    pub async fn build(self: Arc<Self>, key: Key) -> anyhow::Result<Value> {
         let done = self.done.pin_owned();
 
         let mut is_done = true;
@@ -64,7 +66,7 @@ impl BuildContext {
             return Ok(value);
         }
 
-        let mut cached_values = self.construct(&key).await?;
+        let mut cached_values = self.clone().construct(&key).await?;
 
         #[expect(clippy::let_and_return)]
         let value = if let Some(store_value) = self.store.pin().get(&key)
@@ -95,7 +97,7 @@ impl BuildContext {
                     Value::Bytes(bytes)
                 }
                 Key::Concat(path) => {
-                    let bytes = Box::pin(task::task_concat(self.clone(), path)).await?;
+                    let bytes = task::task_concat(self.clone(), path).await?;
                     Value::Bytes(bytes)
                 }
             };
@@ -125,7 +127,7 @@ impl BuildContext {
         Ok(())
     }
 
-    async fn construct(self: &Arc<Self>, key: &Key) -> anyhow::Result<HashSet<Value>> {
+    async fn construct(self: Arc<Self>, key: &Key) -> anyhow::Result<HashSet<Value>> {
         let traces = db::fetch_traces(&self.db, Some(key)).await?;
 
         let mut matches = HashSet::new();
@@ -134,7 +136,7 @@ impl BuildContext {
             debug_assert_eq!(&trace.key, key);
 
             for (dep_key, dep_value_hash) in trace.deps {
-                let dep_value = Box::pin(self.build(dep_key)).await?;
+                let dep_value = self.clone().build(dep_key).await?;
                 if dep_value_hash != dep_value.xxhash() {
                     continue 'trace;
                 }

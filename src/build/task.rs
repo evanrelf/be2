@@ -1,4 +1,7 @@
-use crate::build::system::{BuildContext, Key, Value};
+use crate::{
+    build::system::{BuildContext, Key, Value},
+    util::flatten,
+};
 use bytes::Bytes;
 use camino::{Utf8Path, Utf8PathBuf};
 use std::{str, sync::Arc};
@@ -75,11 +78,17 @@ pub async fn task_concat(cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::Resu
         string.lines().map(Utf8PathBuf::from).collect::<Vec<_>>()
     };
 
+    let mut handles = Vec::with_capacity(paths.len());
+
+    for path in paths {
+        let handle = tokio::spawn(read_file(cx.clone(), path));
+        handles.push(handle);
+    }
+
     let mut output = Vec::new();
 
-    // TODO: Read files concurrently
-    for path in paths {
-        let bytes = read_file(cx.clone(), path).await?;
+    for handle in handles {
+        let bytes = flatten(handle).await?;
         output.extend(bytes);
     }
 
