@@ -1,4 +1,5 @@
 use crate::build::{db, hash::Xxhash as _, task, trace::Trace};
+use async_recursion::async_recursion;
 use bytes::Bytes;
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
@@ -46,8 +47,9 @@ impl Context {
         }
     }
 
+    #[async_recursion]
     pub async fn build(&self, key: &Key) -> anyhow::Result<Value> {
-        let done = self.done.pin();
+        let done = self.done.pin_owned();
 
         let mut is_done = true;
 
@@ -95,7 +97,7 @@ impl Context {
                     Value::Bytes(bytes)
                 }
                 Key::Concat(path) => {
-                    let bytes = Box::pin(task::task_concat(self, path)).await?;
+                    let bytes = task::task_concat(self, path).await?;
                     Value::Bytes(bytes)
                 }
             };
@@ -134,7 +136,7 @@ impl Context {
             debug_assert_eq!(&trace.key, key);
 
             for (dep_key, dep_value_hash) in trace.deps {
-                let dep_value = Box::pin(self.build(&dep_key)).await?;
+                let dep_value = self.build(&dep_key).await?;
                 if dep_value_hash != dep_value.xxhash() {
                     continue 'trace;
                 }

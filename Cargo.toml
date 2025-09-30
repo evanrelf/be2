@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.100"
+async-recursion = "1.1.1"
 boxcar = "0.2.14"
 bytes = { version = "1.10.1", features = ["serde"] }
 camino = { version = "1.2.0", features = ["serde1"] }
