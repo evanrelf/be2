@@ -70,30 +70,11 @@ impl BuildContext {
             return Ok(value);
         }
 
-        let mut cached_values = self.clone().construct(&key).await?;
-
-        #[expect(clippy::let_and_return)]
-        let value = if let Some(store_value) = self.store.pin().get(&key)
-            && cached_values.contains(store_value)
-        {
-            store_value.clone()
-        } else if let Some(cached_value) = cached_values.drain().next() {
-            cached_value
+        let value = if let Some(value) = self.clone().fetch(&key).await? {
+            value
         } else {
             self.debug_task_count.fetch_add(1, Ordering::SeqCst);
-
-            // TODO: Track task deps
-            let value = self.clone().build(&key).await?;
-
-            // let deps = todo!();
-
-            // self.record(Trace {
-            //     key: key.clone(),
-            //     deps,
-            //     value: value.clone(),
-            // });
-
-            value
+            self.clone().build(&key).await?
         };
 
         self.store.pin().insert(key.clone(), value.clone());
@@ -102,6 +83,20 @@ impl BuildContext {
         barrier.set(()).unwrap();
 
         Ok(value)
+    }
+
+    async fn fetch(self: Arc<Self>, key: &Key) -> anyhow::Result<Option<Value>> {
+        let mut cached_values = self.clone().construct(key).await?;
+
+        if let Some(store_value) = self.store.pin().get(key)
+            && cached_values.contains(store_value)
+        {
+            Ok(Some(store_value.clone()))
+        } else if let Some(cached_value) = cached_values.drain().next() {
+            Ok(Some(cached_value))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
@@ -115,6 +110,13 @@ impl BuildContext {
                 Value::Bytes(bytes)
             }
         };
+
+        // TODO: Track task deps
+        // self.record(Trace {
+        //     key: key.clone(),
+        //     deps,
+        //     value: value.clone(),
+        // });
 
         Ok(value)
     }
