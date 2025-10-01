@@ -1,17 +1,34 @@
 #![allow(dead_code)]
 
 mod build;
-mod cli;
 mod db;
 mod format;
 mod lint;
 mod util;
 
-use crate::cli::{Args, Command};
 use camino::Utf8PathBuf;
 use clap::Parser as _;
 use etcetera::app_strategy::{AppStrategy as _, AppStrategyArgs, Xdg};
 use tokio::fs;
+
+#[derive(clap::Parser)]
+#[command(disable_help_subcommand = true)]
+pub struct Args {
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(clap::Subcommand)]
+pub enum Command {
+    /// Format code
+    Format(format::Args),
+
+    /// Lint code
+    Lint(lint::Args),
+
+    /// Delete cache
+    Clean,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
