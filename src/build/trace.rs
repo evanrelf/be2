@@ -42,6 +42,51 @@ where
     }
 }
 
+pub async fn db_migrate(db: &SqlitePool) -> sqlx::Result<()> {
+    sqlx::query(
+        "
+        create table if not exists traces (
+            id integer primary key,
+            key blob not null,
+            value blob not null,
+            trace_hash blob not null unique
+        ) strict;
+
+        create table if not exists trace_deps (
+            trace_id integer not null references traces on delete cascade,
+            dep_key blob not null,
+            dep_value_hash blob not null,
+            unique (trace_id, dep_key)
+        ) strict;
+
+        create index if not exists idx_traces_key on traces(key);
+
+        create trigger if not exists forbid_trace_update
+        before update on traces
+        begin
+            select raise(abort, 'traces are immutable');
+        end;
+
+        create trigger if not exists forbid_trace_deps_update
+        before update on trace_deps
+        begin
+            select raise(abort, 'trace dependencies are immutable');
+        end;
+
+        create trigger if not exists forbid_trace_deps_delete
+        before delete on trace_deps
+        when (select count(*) from traces where id = old.trace_id) > 0
+        begin
+            select raise(abort, 'trace dependencies cannot be deleted directly');
+        end;
+        ",
+    )
+    .execute(db)
+    .await?;
+
+    Ok(())
+}
+
 pub async fn fetch_traces<K, V>(
     db: &SqlitePool,
     key: Option<&K>,
@@ -181,13 +226,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db;
     use bytes::Bytes;
 
     #[tokio::test]
     async fn test_trace_roundtrip() -> anyhow::Result<()> {
         let db = SqlitePool::connect(":memory:").await?;
-        db::migrate(&db).await?;
+        db_migrate(&db).await?;
 
         let key = Bytes::from("password");
         let mut deps = HashMap::default();

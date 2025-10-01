@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 mod build;
-mod db;
 mod format;
 mod lint;
 mod util;

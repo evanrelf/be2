@@ -164,12 +164,11 @@ impl BuildContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db;
 
     #[tokio::test]
     async fn test_stubs() -> anyhow::Result<()> {
         let db = SqlitePool::connect(":memory:").await?;
-        db::migrate(&db).await?;
+        trace::db_migrate(&db).await?;
 
         let cx = BuildContext::new(db);
         cx.debug_use_stubs.store(true, Ordering::SeqCst);
