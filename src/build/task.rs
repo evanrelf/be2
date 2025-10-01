@@ -1,17 +1,14 @@
 use crate::{
-    build::{BuildContext, Key, Value},
+    build::{Key, TaskContext, Value},
     util::flatten,
 };
 use bytes::Bytes;
 use camino::{Utf8Path, Utf8PathBuf};
-use std::{
-    str,
-    sync::{Arc, atomic::Ordering},
-};
+use std::{str, sync::Arc};
 use tokio::fs;
 use tracing::Instrument as _;
 
-pub async fn read_file(cx: Arc<BuildContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
+pub async fn read_file(cx: TaskContext, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
     let key = Key::ReadFile(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
     #[expect(irrefutable_let_patterns)]
@@ -21,8 +18,8 @@ pub async fn read_file(cx: Arc<BuildContext>, path: impl AsRef<Utf8Path>) -> any
     Ok(bytes)
 }
 
-pub async fn task_read_file(cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
-    if cx.debug_use_stubs.load(Ordering::SeqCst) {
+pub async fn task_read_file(cx: TaskContext, path: &Utf8Path) -> anyhow::Result<Bytes> {
+    if cx.use_stubs() {
         let bytes = match path.as_str() {
             "/files" => Vec::from(b"/files/a\n/files/a\n/files/b\n"),
             "/files/a" => Vec::from(b"AAAA\n"),
@@ -37,7 +34,7 @@ pub async fn task_read_file(cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::R
     }
 }
 
-pub async fn concat(cx: Arc<BuildContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
+pub async fn concat(cx: TaskContext, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
     let key = Key::Concat(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
     #[expect(irrefutable_let_patterns)]
@@ -47,9 +44,9 @@ pub async fn concat(cx: Arc<BuildContext>, path: impl AsRef<Utf8Path>) -> anyhow
     Ok(path)
 }
 
-pub async fn task_concat(cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
+pub async fn task_concat(cx: TaskContext, path: &Utf8Path) -> anyhow::Result<Bytes> {
     let paths = {
-        let bytes = read_file(cx.clone(), path).await?;
+        let bytes = read_file(cx.task_cx(), path).await?;
         let string = str::from_utf8(&bytes)?;
         string.lines().map(Utf8PathBuf::from).collect::<Vec<_>>()
     };
@@ -57,7 +54,7 @@ pub async fn task_concat(cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::Resu
     let mut handles = Vec::with_capacity(paths.len());
 
     for path in paths {
-        let handle = tokio::spawn(read_file(cx.clone(), path).in_current_span());
+        let handle = tokio::spawn(read_file(cx.task_cx(), path).in_current_span());
         handles.push(handle);
     }
 

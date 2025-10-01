@@ -11,8 +11,8 @@ use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{
-    collections::HashSet,
-    hash::Hash,
+    collections::{HashMap, HashSet},
+    hash::{BuildHasherDefault, Hash},
     str,
     sync::{
         Arc,
@@ -20,6 +20,7 @@ use std::{
     },
 };
 use tokio::sync::SetOnce;
+use twox_hash::XxHash3_64;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Key {
@@ -49,6 +50,10 @@ impl BuildContext {
             debug_use_stubs: AtomicBool::new(false),
             debug_task_count: AtomicUsize::new(0),
         })
+    }
+
+    fn task_cx(self: Arc<Self>) -> TaskContext {
+        TaskContext::new(self.clone())
     }
 
     #[async_recursion]
@@ -102,11 +107,11 @@ impl BuildContext {
     async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
         let value = match key {
             Key::ReadFile(path) => {
-                let bytes = task::task_read_file(self.clone(), path).await?;
+                let bytes = task::task_read_file(self.task_cx(), path).await?;
                 Value::Bytes(bytes)
             }
             Key::Concat(path) => {
-                let bytes = task::task_concat(self.clone(), path).await?;
+                let bytes = task::task_concat(self.task_cx(), path).await?;
                 Value::Bytes(bytes)
             }
         };
@@ -146,6 +151,32 @@ impl BuildContext {
         }
 
         Ok(matches)
+    }
+}
+
+pub struct TaskContext {
+    build_cx: Arc<BuildContext>,
+    deps: HashMap<Key, u64, BuildHasherDefault<XxHash3_64>>,
+}
+
+impl TaskContext {
+    fn new(build_cx: Arc<BuildContext>) -> Self {
+        Self {
+            build_cx,
+            deps: HashMap::default(),
+        }
+    }
+
+    pub fn task_cx(&self) -> TaskContext {
+        TaskContext::new(self.build_cx.clone())
+    }
+
+    pub async fn realize(&self, key: Key) -> anyhow::Result<Value> {
+        self.build_cx.clone().realize(key).await
+    }
+
+    pub fn use_stubs(&self) -> bool {
+        self.build_cx.debug_use_stubs.load(Ordering::SeqCst)
     }
 }
 
