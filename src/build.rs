@@ -175,8 +175,8 @@ mod tests {
 
         let path = Utf8Path::new("/files");
 
-        let result = task::concat(cx.clone(), path).await?;
-        assert_eq!(result, Bytes::from("AAAA\nAAAA\nBBBB\n"));
+        let result = cx.clone().realize(Key::Concat(Arc::from(path))).await?;
+        assert_eq!(result, Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")));
 
         let expected_store = papaya::HashMap::new();
         expected_store.pin().insert(
