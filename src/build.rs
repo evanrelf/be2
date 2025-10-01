@@ -54,7 +54,7 @@ impl BuildContext {
     }
 
     #[async_recursion]
-    pub async fn build(self: Arc<Self>, key: Key) -> anyhow::Result<Value> {
+    pub async fn realize(self: Arc<Self>, key: Key) -> anyhow::Result<Value> {
         let done = self.done.pin_owned();
 
         let mut is_done = true;
@@ -142,7 +142,7 @@ impl BuildContext {
             debug_assert_eq!(&trace.key, key);
 
             for (dep_key, dep_value_hash) in trace.deps {
-                let dep_value = self.clone().build(dep_key).await?;
+                let dep_value = self.clone().realize(dep_key).await?;
                 if dep_value_hash != dep_value.xxhash() {
                     continue 'trace;
                 }
