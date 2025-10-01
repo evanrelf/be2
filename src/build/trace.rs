@@ -42,6 +42,16 @@ where
     }
 }
 
+impl<K, V> AsRef<Trace<K, V>> for Trace<K, V>
+where
+    K: Key,
+    V: Value,
+{
+    fn as_ref(&self) -> &Trace<K, V> {
+        self
+    }
+}
+
 pub async fn db_migrate(db: &SqlitePool) -> sqlx::Result<()> {
     sqlx::query(
         "

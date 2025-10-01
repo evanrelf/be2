@@ -52,7 +52,7 @@ impl BuildContext {
         })
     }
 
-    fn task_cx(self: Arc<Self>) -> TaskContext {
+    fn task_cx(self: Arc<Self>) -> Arc<TaskContext> {
         TaskContext::new(self.clone())
     }
 
@@ -105,29 +105,31 @@ impl BuildContext {
     }
 
     async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
+        let task_cx = self.clone().task_cx();
+
         let value = match key {
             Key::ReadFile(path) => {
-                let bytes = task::task_read_file(self.task_cx(), path).await?;
+                let bytes = task::task_read_file(task_cx.clone(), path).await?;
                 Value::Bytes(bytes)
             }
             Key::Concat(path) => {
-                let bytes = task::task_concat(self.task_cx(), path).await?;
+                let bytes = task::task_concat(task_cx.clone(), path).await?;
                 Value::Bytes(bytes)
             }
         };
 
-        // TODO: Track task deps
-        // self.record(Trace {
-        //     key: key.clone(),
-        //     deps,
-        //     value: value.clone(),
-        // });
+        self.record(Trace {
+            key: key.clone(),
+            deps: task_cx.deps(),
+            value: value.clone(),
+        })
+        .await?;
 
         Ok(value)
     }
 
-    async fn record(&self, trace: &Trace<Key, Value>) -> anyhow::Result<()> {
-        insert_trace(&self.db, trace).await?;
+    async fn record(&self, trace: impl AsRef<Trace<Key, Value>>) -> anyhow::Result<()> {
+        insert_trace(&self.db, trace.as_ref()).await?;
 
         Ok(())
     }
@@ -156,23 +158,32 @@ impl BuildContext {
 
 pub struct TaskContext {
     build_cx: Arc<BuildContext>,
-    deps: HashMap<Key, u64, BuildHasherDefault<XxHash3_64>>,
+    deps: papaya::HashMap<Key, u64>,
 }
 
 impl TaskContext {
-    fn new(build_cx: Arc<BuildContext>) -> Self {
-        Self {
+    fn new(build_cx: Arc<BuildContext>) -> Arc<Self> {
+        Arc::new(Self {
             build_cx,
-            deps: HashMap::default(),
-        }
+            deps: papaya::HashMap::new(),
+        })
     }
 
-    pub fn task_cx(&self) -> TaskContext {
-        TaskContext::new(self.build_cx.clone())
+    fn deps(&self) -> HashMap<Key, u64, BuildHasherDefault<XxHash3_64>> {
+        let mut deps =
+            HashMap::with_capacity_and_hasher(self.deps.len(), BuildHasherDefault::default());
+
+        for (key, value_hash) in &self.deps.pin() {
+            deps.insert(key.clone(), *value_hash);
+        }
+
+        deps
     }
 
     pub async fn realize(&self, key: Key) -> anyhow::Result<Value> {
-        self.build_cx.clone().realize(key).await
+        let value = self.build_cx.clone().realize(key.clone()).await?;
+        self.deps.pin().insert(key, value.xxhash());
+        Ok(value)
     }
 
     pub fn use_stubs(&self) -> bool {
@@ -195,7 +206,8 @@ mod tests {
         let path = Utf8Path::new("/files");
 
         let result = cx.clone().realize(Key::Concat(Arc::from(path))).await?;
-        assert_eq!(result, Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")));
+        let expected_result = Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n"));
+        assert_eq!(result, expected_result);
 
         let expected_store = papaya::HashMap::new();
         expected_store.pin().insert(
@@ -224,7 +236,65 @@ mod tests {
         }
         assert_eq!(cx.done, expected_done);
 
+        let traces = fetch_traces::<Key, Value>(&cx.db, None).await?;
+
+        #[expect(clippy::unreadable_literal)]
+        let expected_traces = vec![
+            Trace {
+                key: Key::ReadFile(Arc::from(Utf8Path::new("/files"))),
+                deps: HashMap::default(),
+                value: Value::Bytes(Bytes::from("/files/a\n/files/a\n/files/b\n")),
+            },
+            Trace {
+                key: Key::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
+                deps: HashMap::default(),
+                value: Value::Bytes(Bytes::from("AAAA\n")),
+            },
+            Trace {
+                key: Key::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
+                deps: HashMap::default(),
+                value: Value::Bytes(Bytes::from("BBBB\n")),
+            },
+            Trace {
+                key: Key::Concat(Arc::from(Utf8Path::new("/files"))),
+                deps: {
+                    let mut deps = HashMap::default();
+                    deps.insert(
+                        Key::ReadFile(Arc::from(Utf8Path::new("/files"))),
+                        7034874801995377595,
+                    );
+                    deps.insert(
+                        Key::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
+                        6110124553518527577,
+                    );
+                    deps.insert(
+                        Key::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
+                        4445544808285449819,
+                    );
+                    deps
+                },
+                value: Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")),
+            },
+        ];
+        assert_eq!(traces, expected_traces);
+
         assert_eq!(cx.debug_task_count.load(Ordering::SeqCst), 4);
+
+        let db = Arc::into_inner(cx).unwrap().db;
+
+        let cx = BuildContext::new(db);
+        cx.debug_use_stubs.store(true, Ordering::SeqCst);
+
+        let result = cx.clone().realize(Key::Concat(Arc::from(path))).await?;
+
+        // Second run should produce the same results...
+        assert_eq!(result, expected_result);
+        assert_eq!(cx.store, expected_store);
+        assert_eq!(cx.done, expected_done);
+        let traces = fetch_traces::<Key, Value>(&cx.db, None).await?;
+        assert_eq!(traces, expected_traces);
+        // ...but not build anything because it's all cached.
+        assert_eq!(cx.debug_task_count.load(Ordering::SeqCst), 0);
 
         Ok(())
     }

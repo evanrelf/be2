@@ -8,7 +8,7 @@ use std::{str, sync::Arc};
 use tokio::fs;
 use tracing::Instrument as _;
 
-pub async fn read_file(cx: TaskContext, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
+pub async fn read_file(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
     let key = Key::ReadFile(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
     #[expect(irrefutable_let_patterns)]
@@ -18,7 +18,7 @@ pub async fn read_file(cx: TaskContext, path: impl AsRef<Utf8Path>) -> anyhow::R
     Ok(bytes)
 }
 
-pub async fn task_read_file(cx: TaskContext, path: &Utf8Path) -> anyhow::Result<Bytes> {
+pub async fn task_read_file(cx: Arc<TaskContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
     if cx.use_stubs() {
         let bytes = match path.as_str() {
             "/files" => Vec::from(b"/files/a\n/files/a\n/files/b\n"),
@@ -34,7 +34,7 @@ pub async fn task_read_file(cx: TaskContext, path: &Utf8Path) -> anyhow::Result<
     }
 }
 
-pub async fn concat(cx: TaskContext, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
+pub async fn concat(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
     let key = Key::Concat(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
     #[expect(irrefutable_let_patterns)]
@@ -44,9 +44,9 @@ pub async fn concat(cx: TaskContext, path: impl AsRef<Utf8Path>) -> anyhow::Resu
     Ok(path)
 }
 
-pub async fn task_concat(cx: TaskContext, path: &Utf8Path) -> anyhow::Result<Bytes> {
+pub async fn task_concat(cx: Arc<TaskContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
     let paths = {
-        let bytes = read_file(cx.task_cx(), path).await?;
+        let bytes = read_file(cx.clone(), path).await?;
         let string = str::from_utf8(&bytes)?;
         string.lines().map(Utf8PathBuf::from).collect::<Vec<_>>()
     };
@@ -54,7 +54,7 @@ pub async fn task_concat(cx: TaskContext, path: &Utf8Path) -> anyhow::Result<Byt
     let mut handles = Vec::with_capacity(paths.len());
 
     for path in paths {
-        let handle = tokio::spawn(read_file(cx.task_cx(), path).in_current_span());
+        let handle = tokio::spawn(read_file(cx.clone(), path).in_current_span());
         handles.push(handle);
     }
 
