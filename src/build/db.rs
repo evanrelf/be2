@@ -1,6 +1,6 @@
-use crate::build::{
-    hash::Xxhash as _,
-    trace::{Key, Trace, Value},
+use crate::{
+    build::trace::{Key, Trace, Value},
+    util::Xxhash as _,
 };
 use camino::Utf8Path;
 use sqlx::{

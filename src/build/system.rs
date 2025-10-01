@@ -1,4 +1,7 @@
-use crate::build::{db, hash::Xxhash as _, task, trace::Trace};
+use crate::{
+    build::{db, task, trace::Trace},
+    util::Xxhash as _,
+};
 use async_recursion::async_recursion;
 use bytes::Bytes;
 use camino::Utf8Path;
