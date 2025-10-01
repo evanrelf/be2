@@ -33,7 +33,7 @@ pub enum Value {
     Bytes(Bytes),
 }
 
-pub struct BuildContext {
+struct BuildContext {
     db: SqlitePool,
     done: papaya::HashMap<Key, SetOnce<()>>,
     store: papaya::HashMap<Key, Value>,
@@ -42,7 +42,7 @@ pub struct BuildContext {
 }
 
 impl BuildContext {
-    pub fn new(db: SqlitePool) -> Arc<Self> {
+    fn new(db: SqlitePool) -> Arc<Self> {
         Arc::new(Self {
             db,
             done: papaya::HashMap::new(),
@@ -57,7 +57,7 @@ impl BuildContext {
     }
 
     #[async_recursion]
-    pub async fn realize(self: Arc<Self>, key: Key) -> anyhow::Result<Value> {
+    async fn realize(self: Arc<Self>, key: Key) -> anyhow::Result<Value> {
         let done = self.done.pin_owned();
 
         let mut is_done = true;
