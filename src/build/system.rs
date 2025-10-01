@@ -1,5 +1,8 @@
 use crate::{
-    build::{db, task, trace::Trace},
+    build::{
+        task,
+        trace::{Trace, fetch_traces, insert_trace},
+    },
     util::Xxhash as _,
 };
 use async_recursion::async_recursion;
@@ -125,13 +128,13 @@ impl BuildContext {
     }
 
     async fn record(&self, trace: &Trace<Key, Value>) -> anyhow::Result<()> {
-        db::insert_trace(&self.db, trace).await?;
+        insert_trace(&self.db, trace).await?;
 
         Ok(())
     }
 
     async fn construct(self: Arc<Self>, key: &Key) -> anyhow::Result<HashSet<Value>> {
-        let traces = db::fetch_traces(&self.db, Some(key)).await?;
+        let traces = fetch_traces(&self.db, Some(key)).await?;
 
         let mut matches = HashSet::new();
 
@@ -155,6 +158,7 @@ impl BuildContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::build::db;
 
     #[tokio::test]
     async fn test_stubs() -> anyhow::Result<()> {
