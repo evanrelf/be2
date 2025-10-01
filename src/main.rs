@@ -2,6 +2,7 @@
 
 mod build;
 mod cli;
+mod db;
 mod format;
 mod lint;
 mod util;

@@ -181,7 +181,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::build::db;
+    use crate::db;
     use bytes::Bytes;
 
     #[tokio::test]

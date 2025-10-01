@@ -158,7 +158,7 @@ impl BuildContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::build::db;
+    use crate::db;
 
     #[tokio::test]
     async fn test_stubs() -> anyhow::Result<()> {
