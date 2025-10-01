@@ -1,5 +1,6 @@
 use crate::util::flatten;
 use camino::Utf8PathBuf;
+use tracing::Instrument as _;
 
 #[derive(clap::Args)]
 pub struct Args {
@@ -43,14 +44,20 @@ pub async fn run(args: &Args) -> anyhow::Result<()> {
         Some(Command::Haskell(args)) => run_haskell(args).await?,
         Some(Command::Nix(args)) => run_nix(args).await?,
         None => {
-            let haskell = tokio::spawn(async {
-                let args = HaskellArgs::default();
-                run_haskell(&args).await
-            });
-            let nix = tokio::spawn(async {
-                let args = NixArgs::default();
-                run_nix(&args).await
-            });
+            let haskell = tokio::spawn(
+                async {
+                    let args = HaskellArgs::default();
+                    run_haskell(&args).await
+                }
+                .in_current_span(),
+            );
+            let nix = tokio::spawn(
+                async {
+                    let args = NixArgs::default();
+                    run_nix(&args).await
+                }
+                .in_current_span(),
+            );
             tokio::try_join!(flatten(haskell), flatten(nix))?;
         }
     }

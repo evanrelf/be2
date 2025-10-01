@@ -9,6 +9,7 @@ use std::{
     sync::{Arc, atomic::Ordering},
 };
 use tokio::fs;
+use tracing::Instrument as _;
 
 pub async fn read_file(cx: Arc<BuildContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
     let key = Key::ReadFile(Arc::from(path.as_ref()));
@@ -56,7 +57,7 @@ pub async fn task_concat(cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::Resu
     let mut handles = Vec::with_capacity(paths.len());
 
     for path in paths {
-        let handle = tokio::spawn(read_file(cx.clone(), path));
+        let handle = tokio::spawn(read_file(cx.clone(), path).in_current_span());
         handles.push(handle);
     }
 
