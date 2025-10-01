@@ -36,8 +36,8 @@ pub async fn task_read_file(cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::R
     }
 }
 
-pub async fn concat(cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
-    let key = Key::Concat(Arc::from(path));
+pub async fn concat(cx: Arc<BuildContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
+    let key = Key::Concat(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
     #[expect(irrefutable_let_patterns)]
     let Value::Bytes(path) = value else {
