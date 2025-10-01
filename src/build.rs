@@ -85,28 +85,7 @@ impl BuildContext {
             self.debug_task_count.fetch_add(1, Ordering::SeqCst);
 
             // TODO: Track task deps
-            let value = match &key {
-                Key::Which(name) => {
-                    let path = if self.debug_use_stubs.load(Ordering::SeqCst) {
-                        task::task_which_stub(self.clone(), name).await?
-                    } else {
-                        task::task_which(self.clone(), name).await?
-                    };
-                    Value::Path(path)
-                }
-                Key::ReadFile(path) => {
-                    let bytes = if self.debug_use_stubs.load(Ordering::SeqCst) {
-                        task::task_read_file_stub(self.clone(), path).await?
-                    } else {
-                        task::task_read_file(self.clone(), path).await?
-                    };
-                    Value::Bytes(bytes)
-                }
-                Key::Concat(path) => {
-                    let bytes = task::task_concat(self.clone(), path).await?;
-                    Value::Bytes(bytes)
-                }
-            };
+            let value = self.clone().build(&key).await?;
 
             // let deps = todo!();
 
@@ -123,6 +102,33 @@ impl BuildContext {
 
         // SAFETY: The key has not been marked as done yet, and no other tasks will attempt to.
         barrier.set(()).unwrap();
+
+        Ok(value)
+    }
+
+    async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
+        let value = match key {
+            Key::Which(name) => {
+                let path = if self.debug_use_stubs.load(Ordering::SeqCst) {
+                    task::task_which_stub(self.clone(), name).await?
+                } else {
+                    task::task_which(self.clone(), name).await?
+                };
+                Value::Path(path)
+            }
+            Key::ReadFile(path) => {
+                let bytes = if self.debug_use_stubs.load(Ordering::SeqCst) {
+                    task::task_read_file_stub(self.clone(), path).await?
+                } else {
+                    task::task_read_file(self.clone(), path).await?
+                };
+                Value::Bytes(bytes)
+            }
+            Key::Concat(path) => {
+                let bytes = task::task_concat(self.clone(), path).await?;
+                Value::Bytes(bytes)
+            }
+        };
 
         Ok(value)
     }
