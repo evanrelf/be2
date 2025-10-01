@@ -107,11 +107,7 @@ impl BuildContext {
     async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
         let value = match key {
             Key::ReadFile(path) => {
-                let bytes = if self.debug_use_stubs.load(Ordering::SeqCst) {
-                    task::task_read_file_stub(self.clone(), path).await?
-                } else {
-                    task::task_read_file(self.clone(), path).await?
-                };
+                let bytes = task::task_read_file(self.clone(), path).await?;
                 Value::Bytes(bytes)
             }
             Key::Concat(path) => {

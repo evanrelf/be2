@@ -4,7 +4,10 @@ use crate::{
 };
 use bytes::Bytes;
 use camino::{Utf8Path, Utf8PathBuf};
-use std::{str, sync::Arc};
+use std::{
+    str,
+    sync::{Arc, atomic::Ordering},
+};
 use tokio::fs;
 
 pub async fn read_file(cx: Arc<BuildContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
@@ -17,21 +20,20 @@ pub async fn read_file(cx: Arc<BuildContext>, path: impl AsRef<Utf8Path>) -> any
     Ok(bytes)
 }
 
-pub async fn task_read_file(_cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
-    let bytes = fs::read(&path).await?;
-    Ok(Bytes::from(bytes))
-}
-
-#[expect(clippy::unused_async)]
-pub async fn task_read_file_stub(_cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
-    let bytes = match path.as_str() {
-        "/files" => Vec::from(b"/files/a\n/files/a\n/files/b\n"),
-        "/files/a" => Vec::from(b"AAAA\n"),
-        "/files/b" => Vec::from(b"BBBB\n"),
-        "/dev/null" => Vec::new(),
-        _ => anyhow::bail!("Failed to read file at '{path}'"),
-    };
-    Ok(Bytes::from(bytes))
+pub async fn task_read_file(cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
+    if cx.debug_use_stubs.load(Ordering::SeqCst) {
+        let bytes = match path.as_str() {
+            "/files" => Vec::from(b"/files/a\n/files/a\n/files/b\n"),
+            "/files/a" => Vec::from(b"AAAA\n"),
+            "/files/b" => Vec::from(b"BBBB\n"),
+            "/dev/null" => Vec::new(),
+            _ => anyhow::bail!("Failed to read file at '{path}'"),
+        };
+        Ok(Bytes::from(bytes))
+    } else {
+        let bytes = fs::read(&path).await?;
+        Ok(Bytes::from(bytes))
+    }
 }
 
 pub async fn concat(cx: Arc<BuildContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
