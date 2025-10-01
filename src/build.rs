@@ -23,14 +23,12 @@ use tokio::sync::SetOnce;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum Key {
-    Which(Arc<str>),
     ReadFile(Arc<Utf8Path>),
     Concat(Arc<Utf8Path>),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Value {
-    Path(Arc<Utf8Path>),
     Bytes(Bytes),
 }
 
@@ -108,14 +106,6 @@ impl BuildContext {
 
     async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
         let value = match key {
-            Key::Which(name) => {
-                let path = if self.debug_use_stubs.load(Ordering::SeqCst) {
-                    task::task_which_stub(self.clone(), name).await?
-                } else {
-                    task::task_which(self.clone(), name).await?
-                };
-                Value::Path(path)
-            }
             Key::ReadFile(path) => {
                 let bytes = if self.debug_use_stubs.load(Ordering::SeqCst) {
                     task::task_read_file_stub(self.clone(), path).await?
