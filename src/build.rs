@@ -120,8 +120,11 @@ impl BuildContext {
     async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
         let task_cx = Arc::new(TaskContext::new(self.clone()));
 
+        let mut volatile = false;
+
         let value = match key {
             Key::ReadFile(path) => {
+                volatile = true;
                 let bytes = task::task_read_file(task_cx.clone(), path).await?;
                 Value::Bytes(bytes)
             }
@@ -131,15 +134,17 @@ impl BuildContext {
             }
         };
 
-        insert_trace(
-            &self.db,
-            &Trace {
-                key: key.clone(),
-                deps: task_cx.deps(),
-                value: value.clone(),
-            },
-        )
-        .await?;
+        if !volatile {
+            insert_trace(
+                &self.db,
+                &Trace {
+                    key: key.clone(),
+                    deps: task_cx.deps(),
+                    value: value.clone(),
+                },
+            )
+            .await?;
+        }
 
         Ok(value)
     }
