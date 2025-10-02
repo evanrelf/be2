@@ -8,7 +8,10 @@ use std::{str, sync::Arc};
 use tokio::fs;
 use tracing::Instrument as _;
 
-pub async fn read_file(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
+pub async fn read_file(
+    cx: Arc<TaskContext<TestKey, TestValue>>,
+    path: impl AsRef<Utf8Path>,
+) -> anyhow::Result<Bytes> {
     let key = TestKey::ReadFile(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
     #[expect(irrefutable_let_patterns)]
@@ -19,7 +22,7 @@ pub async fn read_file(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyh
 }
 
 pub async fn task_read_file(
-    cx: Arc<TaskContext>,
+    cx: Arc<TaskContext<TestKey, TestValue>>,
     path: impl AsRef<Utf8Path>,
 ) -> anyhow::Result<Bytes> {
     let path = path.as_ref();
@@ -38,7 +41,10 @@ pub async fn task_read_file(
     }
 }
 
-pub async fn concat(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
+pub async fn concat(
+    cx: Arc<TaskContext<TestKey, TestValue>>,
+    path: impl AsRef<Utf8Path>,
+) -> anyhow::Result<Bytes> {
     let key = TestKey::Concat(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
     #[expect(irrefutable_let_patterns)]
@@ -49,7 +55,7 @@ pub async fn concat(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyhow:
 }
 
 pub async fn task_concat(
-    cx: Arc<TaskContext>,
+    cx: Arc<TaskContext<TestKey, TestValue>>,
     path: impl AsRef<Utf8Path>,
 ) -> anyhow::Result<Bytes> {
     let path = path.as_ref();

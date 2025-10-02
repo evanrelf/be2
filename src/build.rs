@@ -48,7 +48,7 @@ struct BuildContext<K, V> {
     debug_task_count: AtomicUsize,
 }
 
-fn tasks(cx: Arc<TaskContext>, key: TestKey) -> Task<TestValue> {
+fn tasks(cx: Arc<TaskContext<TestKey, TestValue>>, key: TestKey) -> Task<TestValue> {
     match key {
         TestKey::ReadFile(path) => Box::pin(async move {
             let bytes = task::task_read_file(cx, path).await?;
@@ -174,7 +174,7 @@ where
     }
 }
 
-pub struct TaskContext<K = TestKey, V = TestValue> {
+pub struct TaskContext<K, V> {
     build_cx: Arc<BuildContext<K, V>>,
     deps: papaya::HashMap<K, u64>,
 }
