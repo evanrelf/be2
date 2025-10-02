@@ -65,25 +65,12 @@ fn tasks(cx: Arc<TaskContext>, key: TestKey) -> Task<TestValue> {
     }
 }
 
-impl BuildContext<TestKey, TestValue> {
-    fn new(db: SqlitePool) -> Arc<Self> {
-        Arc::new(Self {
-            db,
-            tasks: Box::new(tasks),
-            done: papaya::HashMap::new(),
-            store: papaya::HashMap::new(),
-            debug_use_stubs: AtomicBool::new(false),
-            debug_task_count: AtomicUsize::new(0),
-        })
-    }
-}
-
 impl<K, V> BuildContext<K, V>
 where
     K: trace::Key + Send + Sync + 'static + Debug,
     V: trace::Value + Send + Sync + 'static + Debug,
 {
-    fn new_with<F>(db: SqlitePool, tasks: F) -> Arc<Self>
+    fn new<F>(db: SqlitePool, tasks: F) -> Arc<Self>
     where
         F: Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + Send + Sync + 'static,
     {
@@ -236,7 +223,7 @@ mod tests {
         let db = SqlitePool::connect(":memory:").await?;
         trace::db_migrate(&db).await?;
 
-        let cx = BuildContext::new(db);
+        let cx = BuildContext::new(db, tasks);
         cx.debug_use_stubs.store(true, Ordering::SeqCst);
 
         let path = Utf8Path::new("/files");
@@ -302,7 +289,7 @@ mod tests {
 
         let db = Arc::into_inner(cx).unwrap().db;
 
-        let cx = BuildContext::new(db);
+        let cx = BuildContext::new(db, tasks);
         cx.debug_use_stubs.store(true, Ordering::SeqCst);
 
         let result = cx.clone().realize(TestKey::Concat(Arc::from(path))).await?;
