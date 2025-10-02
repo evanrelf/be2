@@ -21,13 +21,13 @@ pub async fn read_file(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyh
 pub async fn task_read_file(cx: Arc<TaskContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
     if cx.use_stubs() {
         let bytes = match path.as_str() {
-            "/files" => Vec::from(b"/files/a\n/files/a\n/files/b\n"),
-            "/files/a" => Vec::from(b"AAAA\n"),
-            "/files/b" => Vec::from(b"BBBB\n"),
-            "/dev/null" => Vec::new(),
+            "/files" => Bytes::from("/files/a\n/files/a\n/files/b\n"),
+            "/files/a" => Bytes::from("AAAA\n"),
+            "/files/b" => Bytes::from("BBBB\n"),
+            "/dev/null" => Bytes::new(),
             _ => anyhow::bail!("Failed to read file at '{path}'"),
         };
-        Ok(Bytes::from(bytes))
+        Ok(bytes)
     } else {
         let bytes = fs::read(&path).await?;
         Ok(Bytes::from(bytes))
