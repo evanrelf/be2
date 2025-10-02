@@ -29,7 +29,7 @@ type Task<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
 
 type Tasks<K, V> = Box<dyn Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + Send + Sync>;
 
-struct BuildContext<K, V> {
+struct State<K, V> {
     db: SqlitePool,
     tasks: Tasks<K, V>,
     done: papaya::HashMap<K, SetOnce<()>>,
@@ -38,7 +38,7 @@ struct BuildContext<K, V> {
     debug_task_count: AtomicUsize,
 }
 
-impl<K, V> BuildContext<K, V>
+impl<K, V> State<K, V>
 where
     K: Key,
     V: Value,
@@ -148,7 +148,7 @@ where
 }
 
 pub struct TaskContext<K, V> {
-    build_cx: Arc<BuildContext<K, V>>,
+    state: Arc<State<K, V>>,
     deps: papaya::HashMap<K, u64>,
 }
 
@@ -157,9 +157,9 @@ where
     K: Key,
     V: Value,
 {
-    fn new(build_cx: Arc<BuildContext<K, V>>) -> Self {
+    fn new(state: Arc<State<K, V>>) -> Self {
         Self {
-            build_cx,
+            state,
             deps: papaya::HashMap::new(),
         }
     }
@@ -176,13 +176,13 @@ where
     }
 
     pub async fn realize(&self, key: K) -> anyhow::Result<V> {
-        let value = self.build_cx.clone().realize(key.clone()).await?;
+        let value = self.state.clone().realize(key.clone()).await?;
         self.deps.pin().insert(key, value.xxhash());
         Ok(value)
     }
 
     pub fn use_stubs(&self) -> bool {
-        self.build_cx.debug_use_stubs.load(Ordering::SeqCst)
+        self.state.debug_use_stubs.load(Ordering::SeqCst)
     }
 }
 
@@ -305,7 +305,7 @@ mod tests {
         let db = SqlitePool::connect(":memory:").await?;
         trace::db_migrate(&db).await?;
 
-        let cx = BuildContext::new(db, tasks);
+        let cx = State::new(db, tasks);
         cx.debug_use_stubs.store(true, Ordering::SeqCst);
 
         let path = Utf8Path::new("/files");
@@ -371,7 +371,7 @@ mod tests {
 
         let db = Arc::into_inner(cx).unwrap().db;
 
-        let cx = BuildContext::new(db, tasks);
+        let cx = State::new(db, tasks);
         cx.debug_use_stubs.store(true, Ordering::SeqCst);
 
         let result = cx.clone().realize(TestKey::Concat(Arc::from(path))).await?;
