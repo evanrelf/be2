@@ -27,32 +27,26 @@ impl<T> Value for T where T: trace::Value + Debug + Send + Sync + 'static {}
 
 type Task<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
 
-type Tasks<K, V> = Box<dyn Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + Send + Sync>;
+pub trait BuildSystem: Sized + 'static {
+    type Key: Key;
 
-// TODO: Explore writing a `BuildSystem` trait. Associated `Key` and `Value` types, a static version
-// of `tasks` (perhaps less boxing required?).
+    type Value: Value;
 
-struct State<K, V> {
+    fn tasks(cx: Arc<TaskContext<Self>>, key: Self::Key) -> Task<Self::Value>;
+}
+
+struct State<T: BuildSystem> {
     db: SqlitePool,
-    tasks: Tasks<K, V>,
-    done: papaya::HashMap<K, SetOnce<()>>,
-    store: papaya::HashMap<K, V>,
+    done: papaya::HashMap<T::Key, SetOnce<()>>,
+    store: papaya::HashMap<T::Key, T::Value>,
     debug_use_stubs: AtomicBool,
     debug_task_count: AtomicUsize,
 }
 
-impl<K, V> State<K, V>
-where
-    K: Key,
-    V: Value,
-{
-    fn new<F>(db: SqlitePool, tasks: F) -> Arc<Self>
-    where
-        F: Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + Send + Sync + 'static,
-    {
+impl<T: BuildSystem> State<T> {
+    fn new(db: SqlitePool) -> Arc<Self> {
         Arc::new(Self {
             db,
-            tasks: Box::new(tasks),
             done: papaya::HashMap::new(),
             store: papaya::HashMap::new(),
             debug_use_stubs: AtomicBool::new(false),
@@ -61,7 +55,7 @@ where
     }
 
     #[async_recursion]
-    async fn realize(self: Arc<Self>, key: K) -> anyhow::Result<V> {
+    async fn realize(self: Arc<Self>, key: T::Key) -> anyhow::Result<T::Value> {
         let done = self.done.pin_owned();
 
         let mut is_done = true;
@@ -94,7 +88,7 @@ where
         Ok(value)
     }
 
-    async fn fetch(self: Arc<Self>, key: &K) -> anyhow::Result<Option<V>> {
+    async fn fetch(self: Arc<Self>, key: &T::Key) -> anyhow::Result<Option<T::Value>> {
         let traces = fetch_traces(&self.db, Some(key)).await?;
 
         let mut matches = HashSet::new();
@@ -125,14 +119,14 @@ where
         }
     }
 
-    async fn build(self: Arc<Self>, key: &K) -> anyhow::Result<V> {
+    async fn build(self: Arc<Self>, key: &T::Key) -> anyhow::Result<T::Value> {
         let task_cx = Arc::new(TaskContext::new(self.clone()));
 
         // If a task is impure or cheaper to rebuild than to cache, mark it as volatile to skip
         // recording traces.
         //
         // For example: reading a file directly (i.e. not via an intermediate file I/O task).
-        let (value, volatile) = (self.tasks)(task_cx.clone(), key.clone()).await?;
+        let (value, volatile) = T::tasks(task_cx.clone(), key.clone()).await?;
 
         if !volatile {
             insert_trace(
@@ -150,24 +144,20 @@ where
     }
 }
 
-pub struct TaskContext<K, V> {
-    state: Arc<State<K, V>>,
-    deps: papaya::HashMap<K, u64>,
+pub struct TaskContext<T: BuildSystem> {
+    state: Arc<State<T>>,
+    deps: papaya::HashMap<T::Key, u64>,
 }
 
-impl<K, V> TaskContext<K, V>
-where
-    K: Key,
-    V: Value,
-{
-    fn new(state: Arc<State<K, V>>) -> Self {
+impl<T: BuildSystem> TaskContext<T> {
+    fn new(state: Arc<State<T>>) -> Self {
         Self {
             state,
             deps: papaya::HashMap::new(),
         }
     }
 
-    fn deps(&self) -> HashMap<K, u64, BuildHasherDefault<XxHash3_64>> {
+    fn deps(&self) -> HashMap<T::Key, u64, BuildHasherDefault<XxHash3_64>> {
         let mut deps =
             HashMap::with_capacity_and_hasher(self.deps.len(), BuildHasherDefault::default());
 
@@ -178,7 +168,7 @@ where
         deps
     }
 
-    pub async fn realize(&self, key: K) -> anyhow::Result<V> {
+    pub async fn realize(&self, key: T::Key) -> anyhow::Result<T::Value> {
         let value = self.state.clone().realize(key.clone()).await?;
         self.deps.pin().insert(key, value.xxhash());
         Ok(value)
@@ -202,35 +192,46 @@ mod tests {
     use tracing::Instrument as _;
 
     #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-    pub enum TestKey {
+    enum TestKey {
         ReadFile(Arc<Utf8Path>),
         Concat(Arc<Utf8Path>),
     }
 
     #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-    pub enum TestValue {
+    enum TestValue {
         Bytes(Bytes),
     }
 
-    fn tasks(cx: Arc<TaskContext<TestKey, TestValue>>, key: TestKey) -> Task<TestValue> {
-        match key {
-            TestKey::ReadFile(path) => Box::pin(async move {
-                let bytes = task_read_file(cx, path).await?;
-                let value = TestValue::Bytes(bytes);
-                let volatile = true;
-                Ok((value, volatile))
-            }),
-            TestKey::Concat(path) => Box::pin(async move {
-                let bytes = task_concat(cx, path).await?;
-                let value = TestValue::Bytes(bytes);
-                let volatile = false;
-                Ok((value, volatile))
-            }),
+    struct TestBuildSystem;
+
+    impl BuildSystem for TestBuildSystem {
+        type Key = TestKey;
+
+        type Value = TestValue;
+
+        fn tasks(
+            cx: Arc<TaskContext<TestBuildSystem>>,
+            key: TestKey,
+        ) -> Pin<Box<dyn Future<Output = anyhow::Result<(TestValue, bool)>> + Send>> {
+            match key {
+                TestKey::ReadFile(path) => Box::pin(async move {
+                    let bytes = task_read_file(cx, path).await?;
+                    let value = TestValue::Bytes(bytes);
+                    let volatile = true;
+                    Ok((value, volatile))
+                }),
+                TestKey::Concat(path) => Box::pin(async move {
+                    let bytes = task_concat(cx, path).await?;
+                    let value = TestValue::Bytes(bytes);
+                    let volatile = false;
+                    Ok((value, volatile))
+                }),
+            }
         }
     }
 
-    pub async fn read_file(
-        cx: Arc<TaskContext<TestKey, TestValue>>,
+    async fn read_file(
+        cx: Arc<TaskContext<TestBuildSystem>>,
         path: impl AsRef<Utf8Path>,
     ) -> anyhow::Result<Bytes> {
         let key = TestKey::ReadFile(Arc::from(path.as_ref()));
@@ -242,8 +243,8 @@ mod tests {
         Ok(bytes)
     }
 
-    pub async fn task_read_file(
-        cx: Arc<TaskContext<TestKey, TestValue>>,
+    async fn task_read_file(
+        cx: Arc<TaskContext<TestBuildSystem>>,
         path: impl AsRef<Utf8Path>,
     ) -> anyhow::Result<Bytes> {
         let path = path.as_ref();
@@ -262,8 +263,8 @@ mod tests {
         }
     }
 
-    pub async fn concat(
-        cx: Arc<TaskContext<TestKey, TestValue>>,
+    async fn concat(
+        cx: Arc<TaskContext<TestBuildSystem>>,
         path: impl AsRef<Utf8Path>,
     ) -> anyhow::Result<Bytes> {
         let key = TestKey::Concat(Arc::from(path.as_ref()));
@@ -275,8 +276,8 @@ mod tests {
         Ok(path)
     }
 
-    pub async fn task_concat(
-        cx: Arc<TaskContext<TestKey, TestValue>>,
+    async fn task_concat(
+        cx: Arc<TaskContext<TestBuildSystem>>,
         path: impl AsRef<Utf8Path>,
     ) -> anyhow::Result<Bytes> {
         let path = path.as_ref();
@@ -308,7 +309,7 @@ mod tests {
         let db = SqlitePool::connect(":memory:").await?;
         trace::db_migrate(&db).await?;
 
-        let state = State::new(db, tasks);
+        let state = State::<TestBuildSystem>::new(db);
         state.debug_use_stubs.store(true, Ordering::SeqCst);
 
         let path = Utf8Path::new("/files");
@@ -377,7 +378,7 @@ mod tests {
 
         let db = Arc::into_inner(state).unwrap().db;
 
-        let state = State::new(db, tasks);
+        let state = State::<TestBuildSystem>::new(db);
         state.debug_use_stubs.store(true, Ordering::SeqCst);
 
         let result = state
