@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{
     collections::{HashMap, HashSet},
+    fmt::Debug,
     hash::{BuildHasherDefault, Hash},
     pin::Pin,
     str,
@@ -38,7 +39,7 @@ type Task<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
 
 type Tasks<K, V> = Box<dyn Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + Send + Sync>;
 
-struct BuildContext<K = Key, V = Value> {
+struct BuildContext<K, V> {
     db: SqlitePool,
     tasks: Tasks<K, V>,
     done: papaya::HashMap<K, SetOnce<()>>,
@@ -47,24 +48,48 @@ struct BuildContext<K = Key, V = Value> {
     debug_task_count: AtomicUsize,
 }
 
-impl BuildContext {
+fn tasks(cx: Arc<TaskContext>, key: Key) -> Task<Value> {
+    match key {
+        Key::ReadFile(path) => Box::pin(async move {
+            let bytes = task::task_read_file(cx, path).await?;
+            let value = Value::Bytes(bytes);
+            let volatile = true;
+            Ok((value, volatile))
+        }),
+        Key::Concat(path) => Box::pin(async move {
+            let bytes = task::task_concat(cx, path).await?;
+            let value = Value::Bytes(bytes);
+            let volatile = false;
+            Ok((value, volatile))
+        }),
+    }
+}
+
+impl BuildContext<Key, Value> {
     fn new(db: SqlitePool) -> Arc<Self> {
         Arc::new(Self {
             db,
-            tasks: Box::new(|cx, key| match key {
-                Key::ReadFile(path) => Box::pin(async move {
-                    let bytes = task::task_read_file(cx, path).await?;
-                    let value = Value::Bytes(bytes);
-                    let volatile = true;
-                    Ok((value, volatile))
-                }),
-                Key::Concat(path) => Box::pin(async move {
-                    let bytes = task::task_concat(cx, path).await?;
-                    let value = Value::Bytes(bytes);
-                    let volatile = false;
-                    Ok((value, volatile))
-                }),
-            }),
+            tasks: Box::new(tasks),
+            done: papaya::HashMap::new(),
+            store: papaya::HashMap::new(),
+            debug_use_stubs: AtomicBool::new(false),
+            debug_task_count: AtomicUsize::new(0),
+        })
+    }
+}
+
+impl<K, V> BuildContext<K, V>
+where
+    K: trace::Key + Send + Sync + 'static + Debug,
+    V: trace::Value + Send + Sync + 'static + Debug,
+{
+    fn new_with<F>(db: SqlitePool, tasks: F) -> Arc<Self>
+    where
+        F: Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + Send + Sync + 'static,
+    {
+        Arc::new(Self {
+            db,
+            tasks: Box::new(tasks),
             done: papaya::HashMap::new(),
             store: papaya::HashMap::new(),
             debug_use_stubs: AtomicBool::new(false),
@@ -73,7 +98,7 @@ impl BuildContext {
     }
 
     #[async_recursion]
-    async fn realize(self: Arc<Self>, key: Key) -> anyhow::Result<Value> {
+    async fn realize(self: Arc<Self>, key: K) -> anyhow::Result<V> {
         let done = self.done.pin_owned();
 
         let mut is_done = true;
@@ -106,7 +131,7 @@ impl BuildContext {
         Ok(value)
     }
 
-    async fn fetch(self: Arc<Self>, key: &Key) -> anyhow::Result<Option<Value>> {
+    async fn fetch(self: Arc<Self>, key: &K) -> anyhow::Result<Option<V>> {
         let traces = fetch_traces(&self.db, Some(key)).await?;
 
         let mut matches = HashSet::new();
@@ -137,7 +162,7 @@ impl BuildContext {
         }
     }
 
-    async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
+    async fn build(self: Arc<Self>, key: &K) -> anyhow::Result<V> {
         let task_cx = Arc::new(TaskContext::new(self.clone()));
 
         // If a task is impure or cheaper to rebuild than to cache, mark it as volatile to skip
@@ -167,15 +192,19 @@ pub struct TaskContext<K = Key, V = Value> {
     deps: papaya::HashMap<K, u64>,
 }
 
-impl TaskContext {
-    fn new(build_cx: Arc<BuildContext>) -> Self {
+impl<K, V> TaskContext<K, V>
+where
+    K: trace::Key + Send + Sync + 'static + Debug,
+    V: trace::Value + Send + Sync + 'static + Debug,
+{
+    fn new(build_cx: Arc<BuildContext<K, V>>) -> Self {
         Self {
             build_cx,
             deps: papaya::HashMap::new(),
         }
     }
 
-    fn deps(&self) -> HashMap<Key, u64, BuildHasherDefault<XxHash3_64>> {
+    fn deps(&self) -> HashMap<K, u64, BuildHasherDefault<XxHash3_64>> {
         let mut deps =
             HashMap::with_capacity_and_hasher(self.deps.len(), BuildHasherDefault::default());
 
@@ -186,7 +215,7 @@ impl TaskContext {
         deps
     }
 
-    pub async fn realize(&self, key: Key) -> anyhow::Result<Value> {
+    pub async fn realize(&self, key: K) -> anyhow::Result<V> {
         let value = self.build_cx.clone().realize(key.clone()).await?;
         self.deps.pin().insert(key, value.xxhash());
         Ok(value)
