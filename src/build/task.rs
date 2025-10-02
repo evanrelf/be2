@@ -18,7 +18,11 @@ pub async fn read_file(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyh
     Ok(bytes)
 }
 
-pub async fn task_read_file(cx: Arc<TaskContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
+pub async fn task_read_file(
+    cx: Arc<TaskContext>,
+    path: impl AsRef<Utf8Path>,
+) -> anyhow::Result<Bytes> {
+    let path = path.as_ref();
     if cx.use_stubs() {
         let bytes = match path.as_str() {
             "/files" => Bytes::from("/files/a\n/files/a\n/files/b\n"),
@@ -44,7 +48,11 @@ pub async fn concat(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyhow:
     Ok(path)
 }
 
-pub async fn task_concat(cx: Arc<TaskContext>, path: &Utf8Path) -> anyhow::Result<Bytes> {
+pub async fn task_concat(
+    cx: Arc<TaskContext>,
+    path: impl AsRef<Utf8Path>,
+) -> anyhow::Result<Bytes> {
+    let path = path.as_ref();
     let paths = {
         let bytes = read_file(cx.clone(), path).await?;
         let string = str::from_utf8(&bytes)?;

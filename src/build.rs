@@ -41,6 +41,35 @@ struct BuildContext<K = Key, V = Value> {
     debug_task_count: AtomicUsize,
 }
 
+type Tasks<K, V> = Box<dyn Fn(Arc<TaskContext<K, V>>, K) -> Task<V>>;
+
+type Task<V> = Box<dyn Future<Output = anyhow::Result<V>> + Send>;
+
+struct BuildContext2<K, V> {
+    tasks: Tasks<K, V>,
+}
+
+fn foo<K, V>(
+    tasks: impl Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + 'static,
+) -> BuildContext2<K, V> {
+    BuildContext2 {
+        tasks: Box::new(tasks),
+    }
+}
+
+fn bar() -> BuildContext2<Key, Value> {
+    foo(|cx, key| match key {
+        Key::ReadFile(path) => Box::new(async move {
+            let bytes = task::task_read_file(cx, path).await?;
+            Ok(Value::Bytes(bytes))
+        }),
+        Key::Concat(path) => Box::new(async move {
+            let bytes = task::task_concat(cx, path).await?;
+            Ok(Value::Bytes(bytes))
+        }),
+    })
+}
+
 impl BuildContext {
     fn new(db: SqlitePool) -> Arc<Self> {
         Arc::new(Self {
