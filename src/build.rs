@@ -25,7 +25,7 @@ pub trait Value: trace::Value + Debug + Send + Sync + 'static {}
 
 impl<T> Value for T where T: trace::Value + Debug + Send + Sync + 'static {}
 
-type Task<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
+pub type Task<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
 
 pub trait BuildSystem: Sized + 'static {
     type Key: Key;
