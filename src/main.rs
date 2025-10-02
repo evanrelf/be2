@@ -3,6 +3,7 @@
 mod build;
 mod format;
 mod lint;
+mod trace;
 mod util;
 
 use camino::Utf8PathBuf;

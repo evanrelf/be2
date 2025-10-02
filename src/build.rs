@@ -1,7 +1,5 @@
-pub mod trace;
-
 use crate::{
-    build::trace::{Trace, fetch_traces, insert_trace},
+    trace::{self, Trace, fetch_traces, insert_trace},
     util::Xxhash as _,
 };
 use async_recursion::async_recursion;
