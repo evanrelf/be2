@@ -33,6 +33,12 @@ pub trait BuildSystem: Sized + 'static {
     type Value: Value;
 
     fn tasks(cx: Arc<TaskContext<Self>>, key: Self::Key) -> Task<Self::Value>;
+
+    async fn build(db: SqlitePool, key: Self::Key) -> anyhow::Result<Self::Value> {
+        let state = State::<Self>::new(db);
+        let value = state.clone().realize(key).await?;
+        Ok(value)
+    }
 }
 
 struct State<T: BuildSystem> {
