@@ -120,6 +120,10 @@ impl BuildContext {
     async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
         let task_cx = Arc::new(TaskContext::new(self.clone()));
 
+        // If a task is impure or cheaper to rebuild than to cache, mark it as volatile to skip
+        // recording traces.
+        //
+        // For example: reading a file directly (i.e. not via an intermediate file I/O task).
         let mut volatile = false;
 
         let value = match key {
