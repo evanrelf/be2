@@ -53,7 +53,7 @@ impl BuildContext {
     }
 
     fn task_cx(self: Arc<Self>) -> Arc<TaskContext> {
-        TaskContext::new(self.clone())
+        Arc::new(TaskContext::new(self.clone()))
     }
 
     #[async_recursion]
@@ -162,11 +162,11 @@ pub struct TaskContext {
 }
 
 impl TaskContext {
-    fn new(build_cx: Arc<BuildContext>) -> Arc<Self> {
-        Arc::new(Self {
+    fn new(build_cx: Arc<BuildContext>) -> Self {
+        Self {
             build_cx,
             deps: papaya::HashMap::new(),
-        })
+        }
     }
 
     fn deps(&self) -> HashMap<Key, u64, BuildHasherDefault<XxHash3_64>> {
