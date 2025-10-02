@@ -17,6 +17,14 @@ use std::{
 use tokio::sync::SetOnce;
 use twox_hash::XxHash3_64;
 
+pub trait Key: trace::Key + Debug + Send + Sync + 'static {}
+
+impl<T> Key for T where T: trace::Key + Debug + Send + Sync + 'static {}
+
+pub trait Value: trace::Value + Debug + Send + Sync + 'static {}
+
+impl<T> Value for T where T: trace::Value + Debug + Send + Sync + 'static {}
+
 type Task<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
 
 type Tasks<K, V> = Box<dyn Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + Send + Sync>;
@@ -32,8 +40,8 @@ struct BuildContext<K, V> {
 
 impl<K, V> BuildContext<K, V>
 where
-    K: trace::Key + Send + Sync + 'static + Debug,
-    V: trace::Value + Send + Sync + 'static + Debug,
+    K: Key,
+    V: Value,
 {
     fn new<F>(db: SqlitePool, tasks: F) -> Arc<Self>
     where
@@ -146,8 +154,8 @@ pub struct TaskContext<K, V> {
 
 impl<K, V> TaskContext<K, V>
 where
-    K: trace::Key + Send + Sync + 'static + Debug,
-    V: trace::Value + Send + Sync + 'static + Debug,
+    K: Key,
+    V: Value,
 {
     fn new(build_cx: Arc<BuildContext<K, V>>) -> Self {
         Self {
