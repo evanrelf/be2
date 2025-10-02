@@ -33,10 +33,10 @@ pub enum Value {
     Bytes(Bytes),
 }
 
-struct BuildContext {
+struct BuildContext<K = Key, V = Value> {
     db: SqlitePool,
-    done: papaya::HashMap<Key, SetOnce<()>>,
-    store: papaya::HashMap<Key, Value>,
+    done: papaya::HashMap<K, SetOnce<()>>,
+    store: papaya::HashMap<K, V>,
     debug_use_stubs: AtomicBool,
     debug_task_count: AtomicUsize,
 }
@@ -154,9 +154,9 @@ impl BuildContext {
     }
 }
 
-pub struct TaskContext {
-    build_cx: Arc<BuildContext>,
-    deps: papaya::HashMap<Key, u64>,
+pub struct TaskContext<K = Key, V = Value> {
+    build_cx: Arc<BuildContext<K, V>>,
+    deps: papaya::HashMap<K, u64>,
 }
 
 impl TaskContext {
