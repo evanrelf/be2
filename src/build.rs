@@ -29,6 +29,9 @@ type Task<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
 
 type Tasks<K, V> = Box<dyn Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + Send + Sync>;
 
+// TODO: Explore writing a `BuildSystem` trait. Associated `Key` and `Value` types, a static version
+// of `tasks` (perhaps less boxing required?).
+
 struct State<K, V> {
     db: SqlitePool,
     tasks: Tasks<K, V>,
