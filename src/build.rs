@@ -13,6 +13,7 @@ use sqlx::SqlitePool;
 use std::{
     collections::{HashMap, HashSet},
     hash::{BuildHasherDefault, Hash},
+    pin::Pin,
     str,
     sync::{
         Arc,
@@ -33,47 +34,37 @@ pub enum Value {
     Bytes(Bytes),
 }
 
+type Task<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
+
+type Tasks<K, V> = Box<dyn Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + Send + Sync>;
+
 struct BuildContext<K = Key, V = Value> {
     db: SqlitePool,
+    tasks: Tasks<K, V>,
     done: papaya::HashMap<K, SetOnce<()>>,
     store: papaya::HashMap<K, V>,
     debug_use_stubs: AtomicBool,
     debug_task_count: AtomicUsize,
 }
 
-type Tasks<K, V> = Box<dyn Fn(Arc<TaskContext<K, V>>, K) -> Task<V>>;
-
-type Task<V> = Box<dyn Future<Output = anyhow::Result<V>> + Send>;
-
-struct BuildContext2<K, V> {
-    tasks: Tasks<K, V>,
-}
-
-fn foo<K, V>(
-    tasks: impl Fn(Arc<TaskContext<K, V>>, K) -> Task<V> + 'static,
-) -> BuildContext2<K, V> {
-    BuildContext2 {
-        tasks: Box::new(tasks),
-    }
-}
-
-fn bar() -> BuildContext2<Key, Value> {
-    foo(|cx, key| match key {
-        Key::ReadFile(path) => Box::new(async move {
-            let bytes = task::task_read_file(cx, path).await?;
-            Ok(Value::Bytes(bytes))
-        }),
-        Key::Concat(path) => Box::new(async move {
-            let bytes = task::task_concat(cx, path).await?;
-            Ok(Value::Bytes(bytes))
-        }),
-    })
-}
-
 impl BuildContext {
     fn new(db: SqlitePool) -> Arc<Self> {
         Arc::new(Self {
             db,
+            tasks: Box::new(|cx, key| match key {
+                Key::ReadFile(path) => Box::pin(async move {
+                    let bytes = task::task_read_file(cx, path).await?;
+                    let value = Value::Bytes(bytes);
+                    let volatile = true;
+                    Ok((value, volatile))
+                }),
+                Key::Concat(path) => Box::pin(async move {
+                    let bytes = task::task_concat(cx, path).await?;
+                    let value = Value::Bytes(bytes);
+                    let volatile = false;
+                    Ok((value, volatile))
+                }),
+            }),
             done: papaya::HashMap::new(),
             store: papaya::HashMap::new(),
             debug_use_stubs: AtomicBool::new(false),
@@ -153,19 +144,7 @@ impl BuildContext {
         // recording traces.
         //
         // For example: reading a file directly (i.e. not via an intermediate file I/O task).
-        let mut volatile = false;
-
-        let value = match key {
-            Key::ReadFile(path) => {
-                volatile = true;
-                let bytes = task::task_read_file(task_cx.clone(), path).await?;
-                Value::Bytes(bytes)
-            }
-            Key::Concat(path) => {
-                let bytes = task::task_concat(task_cx.clone(), path).await?;
-                Value::Bytes(bytes)
-            }
-        };
+        let (value, volatile) = (self.tasks)(task_cx.clone(), key.clone()).await?;
 
         if !volatile {
             insert_trace(
