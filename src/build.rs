@@ -87,13 +87,30 @@ impl BuildContext {
     }
 
     async fn fetch(self: Arc<Self>, key: &Key) -> anyhow::Result<Option<Value>> {
-        let mut cached_values = self.clone().construct(key).await?;
+        let traces = fetch_traces(&self.db, Some(key)).await?;
+
+        let mut matches = HashSet::new();
+
+        // TODO: Check traces concurrently
+        'trace: for trace in traces {
+            debug_assert_eq!(&trace.key, key);
+
+            // TODO: Realize trace deps concurrently
+            for (dep_key, dep_value_hash) in trace.deps {
+                let dep_value = self.clone().realize(dep_key).await?;
+                if dep_value_hash != dep_value.xxhash() {
+                    continue 'trace;
+                }
+            }
+
+            matches.insert(trace.value);
+        }
 
         if let Some(store_value) = self.store.pin().get(key)
-            && cached_values.contains(store_value)
+            && matches.contains(store_value)
         {
             Ok(Some(store_value.clone()))
-        } else if let Some(cached_value) = cached_values.drain().next() {
+        } else if let Some(cached_value) = matches.drain().next() {
             Ok(Some(cached_value))
         } else {
             Ok(None)
@@ -128,27 +145,6 @@ impl BuildContext {
         insert_trace(&self.db, trace.as_ref()).await?;
 
         Ok(())
-    }
-
-    async fn construct(self: Arc<Self>, key: &Key) -> anyhow::Result<HashSet<Value>> {
-        let traces = fetch_traces(&self.db, Some(key)).await?;
-
-        let mut matches = HashSet::new();
-
-        'trace: for trace in traces {
-            debug_assert_eq!(&trace.key, key);
-
-            for (dep_key, dep_value_hash) in trace.deps {
-                let dep_value = self.clone().realize(dep_key).await?;
-                if dep_value_hash != dep_value.xxhash() {
-                    continue 'trace;
-                }
-            }
-
-            matches.insert(trace.value);
-        }
-
-        Ok(matches)
     }
 }
 
