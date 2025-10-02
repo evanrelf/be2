@@ -188,6 +188,7 @@ impl TaskContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use similar_asserts::assert_eq;
 
     #[tokio::test]
     async fn test_stubs() -> anyhow::Result<()> {
@@ -233,45 +234,29 @@ mod tests {
         let traces = fetch_traces::<Key, Value>(&cx.db, None).await?;
 
         #[expect(clippy::unreadable_literal)]
-        let expected_traces = vec![
-            Trace {
-                key: Key::ReadFile(Arc::from(Utf8Path::new("/files"))),
-                deps: HashMap::default(),
-                value: Value::Bytes(Bytes::from("/files/a\n/files/a\n/files/b\n")),
+        let expected_traces = vec![Trace {
+            key: Key::Concat(Arc::from(Utf8Path::new("/files"))),
+            deps: {
+                let mut deps = HashMap::default();
+                deps.insert(
+                    Key::ReadFile(Arc::from(Utf8Path::new("/files"))),
+                    7034874801995377595,
+                );
+                deps.insert(
+                    Key::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
+                    6110124553518527577,
+                );
+                deps.insert(
+                    Key::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
+                    4445544808285449819,
+                );
+                deps
             },
-            Trace {
-                key: Key::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
-                deps: HashMap::default(),
-                value: Value::Bytes(Bytes::from("AAAA\n")),
-            },
-            Trace {
-                key: Key::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
-                deps: HashMap::default(),
-                value: Value::Bytes(Bytes::from("BBBB\n")),
-            },
-            Trace {
-                key: Key::Concat(Arc::from(Utf8Path::new("/files"))),
-                deps: {
-                    let mut deps = HashMap::default();
-                    deps.insert(
-                        Key::ReadFile(Arc::from(Utf8Path::new("/files"))),
-                        7034874801995377595,
-                    );
-                    deps.insert(
-                        Key::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
-                        6110124553518527577,
-                    );
-                    deps.insert(
-                        Key::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
-                        4445544808285449819,
-                    );
-                    deps
-                },
-                value: Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")),
-            },
-        ];
+            value: Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")),
+        }];
         assert_eq!(traces, expected_traces);
 
+        // 3 `read_file`s, 1 `concat`
         assert_eq!(cx.debug_task_count.load(Ordering::SeqCst), 4);
 
         let db = Arc::into_inner(cx).unwrap().db;
@@ -287,8 +272,9 @@ mod tests {
         assert_eq!(cx.done, expected_done);
         let traces = fetch_traces::<Key, Value>(&cx.db, None).await?;
         assert_eq!(traces, expected_traces);
-        // ...but not build anything because it's all cached.
-        assert_eq!(cx.debug_task_count.load(Ordering::SeqCst), 0);
+        // ...but not run any non-volatile tasks, because they're cached.
+        // 3 `read_file`s (volatile), 1 `concat` (non-volatile)
+        assert_eq!(cx.debug_task_count.load(Ordering::SeqCst), 3);
 
         Ok(())
     }
