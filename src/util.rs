@@ -23,7 +23,8 @@ where
     }
 }
 
-pub async fn sqlite_connect(path: &Utf8Path) -> sqlx::Result<SqlitePool> {
+pub async fn sqlite_connect(path: impl AsRef<Utf8Path>) -> sqlx::Result<SqlitePool> {
+    let path = path.as_ref();
     let sqlite = SqlitePool::connect_with(
         SqliteConnectOptions::from_str(&format!("sqlite://{path}"))?
             .create_if_missing(true)
