@@ -131,20 +131,17 @@ impl BuildContext {
             }
         };
 
-        self.record(Trace {
-            key: key.clone(),
-            deps: task_cx.deps(),
-            value: value.clone(),
-        })
+        insert_trace(
+            &self.db,
+            &Trace {
+                key: key.clone(),
+                deps: task_cx.deps(),
+                value: value.clone(),
+            },
+        )
         .await?;
 
         Ok(value)
-    }
-
-    async fn record(&self, trace: impl AsRef<Trace<Key, Value>>) -> anyhow::Result<()> {
-        insert_trace(&self.db, trace.as_ref()).await?;
-
-        Ok(())
     }
 }
 
