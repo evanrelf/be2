@@ -52,10 +52,6 @@ impl BuildContext {
         })
     }
 
-    fn task_cx(self: Arc<Self>) -> Arc<TaskContext> {
-        Arc::new(TaskContext::new(self.clone()))
-    }
-
     #[async_recursion]
     async fn realize(self: Arc<Self>, key: Key) -> anyhow::Result<Value> {
         let done = self.done.pin_owned();
@@ -105,7 +101,7 @@ impl BuildContext {
     }
 
     async fn build(self: Arc<Self>, key: &Key) -> anyhow::Result<Value> {
-        let task_cx = self.clone().task_cx();
+        let task_cx = Arc::new(TaskContext::new(self.clone()));
 
         let value = match key {
             Key::ReadFile(path) => {
