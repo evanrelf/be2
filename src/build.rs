@@ -1,4 +1,3 @@
-pub mod task;
 pub mod trace;
 
 use crate::{
@@ -6,16 +5,12 @@ use crate::{
     util::Xxhash as _,
 };
 use async_recursion::async_recursion;
-use bytes::Bytes;
-use camino::Utf8Path;
-use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
-    hash::{BuildHasherDefault, Hash},
+    hash::BuildHasherDefault,
     pin::Pin,
-    str,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -23,17 +18,6 @@ use std::{
 };
 use tokio::sync::SetOnce;
 use twox_hash::XxHash3_64;
-
-#[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-pub enum TestKey {
-    ReadFile(Arc<Utf8Path>),
-    Concat(Arc<Utf8Path>),
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub enum TestValue {
-    Bytes(Bytes),
-}
 
 type Task<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
 
@@ -46,23 +30,6 @@ struct BuildContext<K, V> {
     store: papaya::HashMap<K, V>,
     debug_use_stubs: AtomicBool,
     debug_task_count: AtomicUsize,
-}
-
-fn tasks(cx: Arc<TaskContext<TestKey, TestValue>>, key: TestKey) -> Task<TestValue> {
-    match key {
-        TestKey::ReadFile(path) => Box::pin(async move {
-            let bytes = task::task_read_file(cx, path).await?;
-            let value = TestValue::Bytes(bytes);
-            let volatile = true;
-            Ok((value, volatile))
-        }),
-        TestKey::Concat(path) => Box::pin(async move {
-            let bytes = task::task_concat(cx, path).await?;
-            let value = TestValue::Bytes(bytes);
-            let volatile = false;
-            Ok((value, volatile))
-        }),
-    }
 }
 
 impl<K, V> BuildContext<K, V>
@@ -216,7 +183,116 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::util::flatten;
+    use bytes::Bytes;
+    use camino::{Utf8Path, Utf8PathBuf};
+    use serde::{Deserialize, Serialize};
     use similar_asserts::assert_eq;
+    use std::{str, sync::Arc};
+    use tokio::fs;
+    use tracing::Instrument as _;
+
+    #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+    pub enum TestKey {
+        ReadFile(Arc<Utf8Path>),
+        Concat(Arc<Utf8Path>),
+    }
+
+    #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+    pub enum TestValue {
+        Bytes(Bytes),
+    }
+
+    fn tasks(cx: Arc<TaskContext<TestKey, TestValue>>, key: TestKey) -> Task<TestValue> {
+        match key {
+            TestKey::ReadFile(path) => Box::pin(async move {
+                let bytes = task_read_file(cx, path).await?;
+                let value = TestValue::Bytes(bytes);
+                let volatile = true;
+                Ok((value, volatile))
+            }),
+            TestKey::Concat(path) => Box::pin(async move {
+                let bytes = task_concat(cx, path).await?;
+                let value = TestValue::Bytes(bytes);
+                let volatile = false;
+                Ok((value, volatile))
+            }),
+        }
+    }
+
+    pub async fn read_file(
+        cx: Arc<TaskContext<TestKey, TestValue>>,
+        path: impl AsRef<Utf8Path>,
+    ) -> anyhow::Result<Bytes> {
+        let key = TestKey::ReadFile(Arc::from(path.as_ref()));
+        let value = cx.realize(key).await?;
+        #[expect(irrefutable_let_patterns)]
+        let TestValue::Bytes(bytes) = value else {
+            unreachable!()
+        };
+        Ok(bytes)
+    }
+
+    pub async fn task_read_file(
+        cx: Arc<TaskContext<TestKey, TestValue>>,
+        path: impl AsRef<Utf8Path>,
+    ) -> anyhow::Result<Bytes> {
+        let path = path.as_ref();
+        if cx.use_stubs() {
+            let bytes = match path.as_str() {
+                "/files" => Bytes::from("/files/a\n/files/a\n/files/b\n"),
+                "/files/a" => Bytes::from("AAAA\n"),
+                "/files/b" => Bytes::from("BBBB\n"),
+                "/dev/null" => Bytes::new(),
+                _ => anyhow::bail!("Failed to read file at '{path}'"),
+            };
+            Ok(bytes)
+        } else {
+            let bytes = fs::read(&path).await?;
+            Ok(Bytes::from(bytes))
+        }
+    }
+
+    pub async fn concat(
+        cx: Arc<TaskContext<TestKey, TestValue>>,
+        path: impl AsRef<Utf8Path>,
+    ) -> anyhow::Result<Bytes> {
+        let key = TestKey::Concat(Arc::from(path.as_ref()));
+        let value = cx.realize(key).await?;
+        #[expect(irrefutable_let_patterns)]
+        let TestValue::Bytes(path) = value else {
+            unreachable!()
+        };
+        Ok(path)
+    }
+
+    pub async fn task_concat(
+        cx: Arc<TaskContext<TestKey, TestValue>>,
+        path: impl AsRef<Utf8Path>,
+    ) -> anyhow::Result<Bytes> {
+        let path = path.as_ref();
+        let paths = {
+            let bytes = read_file(cx.clone(), path).await?;
+            let string = str::from_utf8(&bytes)?;
+            string.lines().map(Utf8PathBuf::from).collect::<Vec<_>>()
+        };
+
+        let mut handles = Vec::with_capacity(paths.len());
+
+        for path in paths {
+            let handle = tokio::spawn(read_file(cx.clone(), path).in_current_span());
+            handles.push(handle);
+        }
+
+        let mut output = Vec::new();
+
+        for handle in handles {
+            let bytes = flatten(handle).await?;
+            output.extend(bytes);
+        }
+
+        Ok(Bytes::from(output))
+    }
 
     #[tokio::test]
     async fn test_stubs() -> anyhow::Result<()> {
