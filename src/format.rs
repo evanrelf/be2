@@ -87,12 +87,18 @@ struct FormatSystem;
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 enum Key {
     ReadFile(Arc<Utf8Path>),
-    Fourmolu(Bytes),
+    Canonicalize(Arc<Utf8Path>),
+    Which(Arc<str>),
+    Fourmolu {
+        path: Option<Arc<Utf8Path>>,
+        bytes: Bytes,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 enum Value {
     Bytes(Bytes),
+    Path(Arc<Utf8Path>),
 }
 
 async fn read_file(
@@ -101,7 +107,6 @@ async fn read_file(
 ) -> anyhow::Result<Bytes> {
     let key = Key::ReadFile(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
-    #[expect(irrefutable_let_patterns)]
     let Value::Bytes(bytes) = value else {
         unreachable!()
     };
@@ -117,10 +122,53 @@ async fn task_read_file(
     Ok(Bytes::from(bytes))
 }
 
-async fn fourmolu(cx: Arc<TaskContext<FormatSystem>>, bytes: Bytes) -> anyhow::Result<Bytes> {
-    let key = Key::Fourmolu(bytes);
+async fn canonicalize(
+    cx: Arc<TaskContext<FormatSystem>>,
+    path: impl AsRef<Utf8Path>,
+) -> anyhow::Result<Arc<Utf8Path>> {
+    let key = Key::Canonicalize(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
-    #[expect(irrefutable_let_patterns)]
+    let Value::Path(path) = value else {
+        unreachable!()
+    };
+    Ok(path)
+}
+
+#[expect(clippy::unused_async)]
+async fn task_canonicalize(
+    _cx: Arc<TaskContext<FormatSystem>>,
+    _path: impl AsRef<Utf8Path>,
+) -> anyhow::Result<Arc<Utf8Path>> {
+    todo!()
+}
+
+async fn which(
+    cx: Arc<TaskContext<FormatSystem>>,
+    name: impl AsRef<str>,
+) -> anyhow::Result<Arc<Utf8Path>> {
+    let key = Key::Which(Arc::from(name.as_ref()));
+    let value = cx.realize(key).await?;
+    let Value::Path(path) = value else {
+        unreachable!()
+    };
+    Ok(path)
+}
+
+#[expect(clippy::unused_async)]
+async fn task_which(
+    _cx: Arc<TaskContext<FormatSystem>>,
+    _name: impl AsRef<str>,
+) -> anyhow::Result<Arc<Utf8Path>> {
+    todo!()
+}
+
+async fn fourmolu(
+    cx: Arc<TaskContext<FormatSystem>>,
+    path: Option<Arc<Utf8Path>>,
+    bytes: Bytes,
+) -> anyhow::Result<Bytes> {
+    let key = Key::Fourmolu { path, bytes };
+    let value = cx.realize(key).await?;
     let Value::Bytes(bytes) = value else {
         unreachable!()
     };
@@ -130,6 +178,7 @@ async fn fourmolu(cx: Arc<TaskContext<FormatSystem>>, bytes: Bytes) -> anyhow::R
 #[expect(clippy::unused_async)]
 async fn task_fourmolu(
     _cx: Arc<TaskContext<FormatSystem>>,
+    _path: Option<Arc<Utf8Path>>,
     _bytes: Bytes,
 ) -> anyhow::Result<Bytes> {
     todo!()
@@ -146,8 +195,20 @@ impl BuildSystem for FormatSystem {
                 let volatile = true;
                 Ok((value, volatile))
             }),
-            Key::Fourmolu(bytes) => Box::pin(async move {
-                let bytes = task_fourmolu(cx, bytes).await?;
+            Key::Canonicalize(path) => Box::pin(async move {
+                let path = task_canonicalize(cx, path).await?;
+                let value = Value::Path(path);
+                let volatile = true;
+                Ok((value, volatile))
+            }),
+            Key::Which(name) => Box::pin(async move {
+                let path = task_which(cx, name).await?;
+                let value = Value::Path(path);
+                let volatile = true;
+                Ok((value, volatile))
+            }),
+            Key::Fourmolu { path, bytes } => Box::pin(async move {
+                let bytes = task_fourmolu(cx, path, bytes).await?;
                 let value = Value::Bytes(bytes);
                 let volatile = false;
                 Ok((value, volatile))
