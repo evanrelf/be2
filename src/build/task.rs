@@ -1,5 +1,5 @@
 use crate::{
-    build::{Key, TaskContext, Value},
+    build::{TaskContext, TestKey, TestValue},
     util::flatten,
 };
 use bytes::Bytes;
@@ -9,10 +9,10 @@ use tokio::fs;
 use tracing::Instrument as _;
 
 pub async fn read_file(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
-    let key = Key::ReadFile(Arc::from(path.as_ref()));
+    let key = TestKey::ReadFile(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
     #[expect(irrefutable_let_patterns)]
-    let Value::Bytes(bytes) = value else {
+    let TestValue::Bytes(bytes) = value else {
         unreachable!()
     };
     Ok(bytes)
@@ -39,10 +39,10 @@ pub async fn task_read_file(
 }
 
 pub async fn concat(cx: Arc<TaskContext>, path: impl AsRef<Utf8Path>) -> anyhow::Result<Bytes> {
-    let key = Key::Concat(Arc::from(path.as_ref()));
+    let key = TestKey::Concat(Arc::from(path.as_ref()));
     let value = cx.realize(key).await?;
     #[expect(irrefutable_let_patterns)]
-    let Value::Bytes(path) = value else {
+    let TestValue::Bytes(path) = value else {
         unreachable!()
     };
     Ok(path)

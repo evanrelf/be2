@@ -25,13 +25,13 @@ use tokio::sync::SetOnce;
 use twox_hash::XxHash3_64;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
-pub enum Key {
+pub enum TestKey {
     ReadFile(Arc<Utf8Path>),
     Concat(Arc<Utf8Path>),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub enum Value {
+pub enum TestValue {
     Bytes(Bytes),
 }
 
@@ -48,24 +48,24 @@ struct BuildContext<K, V> {
     debug_task_count: AtomicUsize,
 }
 
-fn tasks(cx: Arc<TaskContext>, key: Key) -> Task<Value> {
+fn tasks(cx: Arc<TaskContext>, key: TestKey) -> Task<TestValue> {
     match key {
-        Key::ReadFile(path) => Box::pin(async move {
+        TestKey::ReadFile(path) => Box::pin(async move {
             let bytes = task::task_read_file(cx, path).await?;
-            let value = Value::Bytes(bytes);
+            let value = TestValue::Bytes(bytes);
             let volatile = true;
             Ok((value, volatile))
         }),
-        Key::Concat(path) => Box::pin(async move {
+        TestKey::Concat(path) => Box::pin(async move {
             let bytes = task::task_concat(cx, path).await?;
-            let value = Value::Bytes(bytes);
+            let value = TestValue::Bytes(bytes);
             let volatile = false;
             Ok((value, volatile))
         }),
     }
 }
 
-impl BuildContext<Key, Value> {
+impl BuildContext<TestKey, TestValue> {
     fn new(db: SqlitePool) -> Arc<Self> {
         Arc::new(Self {
             db,
@@ -187,7 +187,7 @@ where
     }
 }
 
-pub struct TaskContext<K = Key, V = Value> {
+pub struct TaskContext<K = TestKey, V = TestValue> {
     build_cx: Arc<BuildContext<K, V>>,
     deps: papaya::HashMap<K, u64>,
 }
@@ -241,26 +241,26 @@ mod tests {
 
         let path = Utf8Path::new("/files");
 
-        let result = cx.clone().realize(Key::Concat(Arc::from(path))).await?;
-        let expected_result = Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n"));
+        let result = cx.clone().realize(TestKey::Concat(Arc::from(path))).await?;
+        let expected_result = TestValue::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n"));
         assert_eq!(result, expected_result);
 
         let expected_store = papaya::HashMap::new();
         expected_store.pin().insert(
-            Key::ReadFile(Arc::from(Utf8Path::new("/files"))),
-            Value::Bytes(Bytes::from("/files/a\n/files/a\n/files/b\n")),
+            TestKey::ReadFile(Arc::from(Utf8Path::new("/files"))),
+            TestValue::Bytes(Bytes::from("/files/a\n/files/a\n/files/b\n")),
         );
         expected_store.pin().insert(
-            Key::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
-            Value::Bytes(Bytes::from("AAAA\n")),
+            TestKey::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
+            TestValue::Bytes(Bytes::from("AAAA\n")),
         );
         expected_store.pin().insert(
-            Key::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
-            Value::Bytes(Bytes::from("BBBB\n")),
+            TestKey::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
+            TestValue::Bytes(Bytes::from("BBBB\n")),
         );
         expected_store.pin().insert(
-            Key::Concat(Arc::from(Utf8Path::new("/files"))),
-            Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")),
+            TestKey::Concat(Arc::from(Utf8Path::new("/files"))),
+            TestValue::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")),
         );
         assert_eq!(cx.store, expected_store);
 
@@ -272,28 +272,28 @@ mod tests {
         }
         assert_eq!(cx.done, expected_done);
 
-        let traces = fetch_traces::<Key, Value>(&cx.db, None).await?;
+        let traces = fetch_traces::<TestKey, TestValue>(&cx.db, None).await?;
 
         #[expect(clippy::unreadable_literal)]
         let expected_traces = vec![Trace {
-            key: Key::Concat(Arc::from(Utf8Path::new("/files"))),
+            key: TestKey::Concat(Arc::from(Utf8Path::new("/files"))),
             deps: {
                 let mut deps = HashMap::default();
                 deps.insert(
-                    Key::ReadFile(Arc::from(Utf8Path::new("/files"))),
+                    TestKey::ReadFile(Arc::from(Utf8Path::new("/files"))),
                     7034874801995377595,
                 );
                 deps.insert(
-                    Key::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
+                    TestKey::ReadFile(Arc::from(Utf8Path::new("/files/a"))),
                     6110124553518527577,
                 );
                 deps.insert(
-                    Key::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
+                    TestKey::ReadFile(Arc::from(Utf8Path::new("/files/b"))),
                     4445544808285449819,
                 );
                 deps
             },
-            value: Value::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")),
+            value: TestValue::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")),
         }];
         assert_eq!(traces, expected_traces);
 
@@ -305,13 +305,13 @@ mod tests {
         let cx = BuildContext::new(db);
         cx.debug_use_stubs.store(true, Ordering::SeqCst);
 
-        let result = cx.clone().realize(Key::Concat(Arc::from(path))).await?;
+        let result = cx.clone().realize(TestKey::Concat(Arc::from(path))).await?;
 
         // Second run should produce the same results...
         assert_eq!(result, expected_result);
         assert_eq!(cx.store, expected_store);
         assert_eq!(cx.done, expected_done);
-        let traces = fetch_traces::<Key, Value>(&cx.db, None).await?;
+        let traces = fetch_traces::<TestKey, TestValue>(&cx.db, None).await?;
         assert_eq!(traces, expected_traces);
         // ...but not run any non-volatile tasks, because they're cached.
         // 3 `read_file`s (volatile), 1 `concat` (non-volatile)
