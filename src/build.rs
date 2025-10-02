@@ -308,12 +308,15 @@ mod tests {
         let db = SqlitePool::connect(":memory:").await?;
         trace::db_migrate(&db).await?;
 
-        let cx = State::new(db, tasks);
-        cx.debug_use_stubs.store(true, Ordering::SeqCst);
+        let state = State::new(db, tasks);
+        state.debug_use_stubs.store(true, Ordering::SeqCst);
 
         let path = Utf8Path::new("/files");
 
-        let result = cx.clone().realize(TestKey::Concat(Arc::from(path))).await?;
+        let result = state
+            .clone()
+            .realize(TestKey::Concat(Arc::from(path)))
+            .await?;
         let expected_result = TestValue::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n"));
         assert_eq!(result, expected_result);
 
@@ -334,7 +337,7 @@ mod tests {
             TestKey::Concat(Arc::from(Utf8Path::new("/files"))),
             TestValue::Bytes(Bytes::from("AAAA\nAAAA\nBBBB\n")),
         );
-        assert_eq!(cx.store, expected_store);
+        assert_eq!(state.store, expected_store);
 
         let expected_done = papaya::HashMap::new();
         for key in expected_store.pin().keys() {
@@ -342,9 +345,9 @@ mod tests {
                 .pin()
                 .insert(key.clone(), SetOnce::new_with(Some(())));
         }
-        assert_eq!(cx.done, expected_done);
+        assert_eq!(state.done, expected_done);
 
-        let traces = fetch_traces::<TestKey, TestValue>(&cx.db, None).await?;
+        let traces = fetch_traces::<TestKey, TestValue>(&state.db, None).await?;
 
         #[expect(clippy::unreadable_literal)]
         let expected_traces = vec![Trace {
@@ -370,24 +373,27 @@ mod tests {
         assert_eq!(traces, expected_traces);
 
         // 3 `read_file`s, 1 `concat`
-        assert_eq!(cx.debug_task_count.load(Ordering::SeqCst), 4);
+        assert_eq!(state.debug_task_count.load(Ordering::SeqCst), 4);
 
-        let db = Arc::into_inner(cx).unwrap().db;
+        let db = Arc::into_inner(state).unwrap().db;
 
-        let cx = State::new(db, tasks);
-        cx.debug_use_stubs.store(true, Ordering::SeqCst);
+        let state = State::new(db, tasks);
+        state.debug_use_stubs.store(true, Ordering::SeqCst);
 
-        let result = cx.clone().realize(TestKey::Concat(Arc::from(path))).await?;
+        let result = state
+            .clone()
+            .realize(TestKey::Concat(Arc::from(path)))
+            .await?;
 
         // Second run should produce the same results...
         assert_eq!(result, expected_result);
-        assert_eq!(cx.store, expected_store);
-        assert_eq!(cx.done, expected_done);
-        let traces = fetch_traces::<TestKey, TestValue>(&cx.db, None).await?;
+        assert_eq!(state.store, expected_store);
+        assert_eq!(state.done, expected_done);
+        let traces = fetch_traces::<TestKey, TestValue>(&state.db, None).await?;
         assert_eq!(traces, expected_traces);
         // ...but not run any non-volatile tasks, because they're cached.
         // 3 `read_file`s (volatile), 1 `concat` (non-volatile)
-        assert_eq!(cx.debug_task_count.load(Ordering::SeqCst), 3);
+        assert_eq!(state.debug_task_count.load(Ordering::SeqCst), 3);
 
         Ok(())
     }
