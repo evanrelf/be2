@@ -34,10 +34,9 @@ pub trait BuildSystem: Sized + 'static {
 
     fn tasks(cx: Arc<TaskContext<Self>>, key: Self::Key) -> Task<Self::Value>;
 
-    async fn build(db: SqlitePool, key: Self::Key) -> anyhow::Result<Self::Value> {
+    fn init(db: SqlitePool) -> Arc<TaskContext<Self>> {
         let state = State::<Self>::new(db);
-        let value = state.clone().realize(key).await?;
-        Ok(value)
+        Arc::new(TaskContext::new(state))
     }
 }
 
