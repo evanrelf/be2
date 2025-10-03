@@ -86,9 +86,7 @@ enum FormatSystem {}
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 enum Key {
-    ReadFile {
-        path: Arc<Utf8Path>,
-    },
+    ReadFile(Arc<Utf8Path>),
     Canonicalize(Arc<Utf8Path>),
     Which(Arc<str>),
     Fourmolu {
@@ -103,49 +101,25 @@ enum Value {
     Path(Arc<Utf8Path>),
 }
 
-// async fn read_file(
-//     cx: Arc<TaskContext<FormatSystem>>,
-//     path: impl AsRef<Utf8Path>,
-// ) -> anyhow::Result<Bytes> {
-//     let key = Key::ReadFile(Arc::from(path.as_ref()));
-//     let value = cx.realize(key).await?;
-//     let Value::Bytes(bytes) = value else {
-//         unreachable!()
-//     };
-//     Ok(bytes)
-// }
-
-macro_rules! task {
-    (
-        $(#[$attr:meta])*
-        async fn $name:ident ($cx:ident: $cx_ty:ty, $($input:ident : $input_ty:ty),* $(,)?) -> $output:ty $block:block
-    ) => {
-        ::paste::paste! {
-            $(#[$attr])*
-            async fn $name (cx : $cx_ty, $($input : $input_ty),*) -> $output {
-                let key = Key::[<$name:camel>] { $($input),* };
-                let value = cx.realize(key).await?;
-                let Value::[<$name:camel>](output) = value else {
-                    unreachable!()
-                };
-                Ok(output)
-            }
-
-            $(#[$attr])*
-            async fn [<task_ $name>] ($cx : $cx_ty, $($input : $input_ty),*) -> $output $block
-        }
+async fn read_file(
+    cx: Arc<TaskContext<FormatSystem>>,
+    path: impl AsRef<Utf8Path>,
+) -> anyhow::Result<Bytes> {
+    let key = Key::ReadFile(Arc::from(path.as_ref()));
+    let value = cx.realize(key).await?;
+    let Value::Bytes(bytes) = value else {
+        unreachable!()
     };
+    Ok(bytes)
 }
 
-task! {
-    async fn read_file(
-        _cx: Arc<TaskContext<FormatSystem>>,
-        path: impl AsRef<Utf8Path>,
-    ) -> anyhow::Result<Bytes> {
-        let path = path.as_ref();
-        let bytes = fs::read(&path).await?;
-        Ok(Bytes::from(bytes))
-    }
+async fn task_read_file(
+    _cx: Arc<TaskContext<FormatSystem>>,
+    path: impl AsRef<Utf8Path>,
+) -> anyhow::Result<Bytes> {
+    let path = path.as_ref();
+    let bytes = fs::read(&path).await?;
+    Ok(Bytes::from(bytes))
 }
 
 async fn canonicalize(
@@ -210,35 +184,12 @@ async fn task_fourmolu(
     todo!()
 }
 
-// task! {
-//     #[expect(clippy::unused_async)]
-//     async fn foo(_cx: Arc<TaskContext<FormatSystem>>, _x: u8, _y: u16) -> anyhow::Result<u32> {
-//         todo!()
-//     }
-// }
-
-/*
-async fn foo(cx: Arc<TaskContext<FormatSystem>>, x: u8, y: u16) -> anyhow::Result<u32> {
-    let key = Key::Foo { x, y };
-    let value = cx.realize(key).await?;
-    let Value::Foo(output) = value else {
-        unreachable!()
-    };
-    Ok(output)
-}
-
-#[expect(clippy::unused_async)]
-async fn task_foo(_cx: Arc<TaskContext<FormatSystem>>, _x: u8, _y: u16) -> anyhow::Result<u32> {
-    todo!()
-}
-*/
-
 impl BuildSystem for FormatSystem {
     type Key = Key;
     type Value = Value;
     fn tasks(cx: Arc<TaskContext<FormatSystem>>, key: Key) -> TaskFut<Value> {
         match key {
-            Key::ReadFile { path } => Box::pin(async move {
+            Key::ReadFile(path) => Box::pin(async move {
                 let bytes = task_read_file(cx, path).await?;
                 let value = Value::Bytes(bytes);
                 let volatile = true;
