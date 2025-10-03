@@ -82,7 +82,7 @@ pub async fn run_nix(_args: &NixArgs) -> anyhow::Result<()> {
     todo!()
 }
 
-struct FormatSystem;
+enum FormatSystem {}
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 enum Key {
