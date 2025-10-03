@@ -7,13 +7,13 @@ use std::{
 };
 use twox_hash::XxHash3_64;
 
-pub trait Key: for<'de> Deserialize<'de> + Clone + Hash + Ord + Serialize {}
+pub trait Key: for<'de> Deserialize<'de> + Hash + Ord + Serialize {}
 
-impl<T> Key for T where T: for<'de> Deserialize<'de> + Clone + Hash + Ord + Serialize {}
+impl<T> Key for T where T: for<'de> Deserialize<'de> + Hash + Ord + Serialize {}
 
-pub trait Value: for<'de> Deserialize<'de> + Clone + Eq + Hash + Serialize {}
+pub trait Value: for<'de> Deserialize<'de> + Eq + Hash + Serialize {}
 
-impl<T> Value for T where T: for<'de> Deserialize<'de> + Clone + Eq + Hash + Serialize {}
+impl<T> Value for T where T: for<'de> Deserialize<'de> + Eq + Hash + Serialize {}
 
 #[derive(Debug, PartialEq)]
 pub struct Trace<K, V>
@@ -123,14 +123,15 @@ where
 
     for trace_row in trace_rows {
         let trace_id: i64 = trace_row.get(0);
-        let key: K = if let Some(key) = key {
-            key.clone()
-        } else {
-            let key: Vec<u8> = trace_row.get(1);
-            ciborium::from_reader(&key[..])?
-        };
-        let value: Vec<u8> = trace_row.get(2);
-        let value: V = ciborium::from_reader(&value[..])?;
+
+        let trace_key: Vec<u8> = trace_row.get(1);
+        let trace_key: K = ciborium::from_reader(&trace_key[..])?;
+        if let Some(key) = key {
+            debug_assert_eq!(key.xxhash(), trace_key.xxhash());
+        }
+
+        let trace_value: Vec<u8> = trace_row.get(2);
+        let trace_value: V = ciborium::from_reader(&trace_value[..])?;
 
         let deps_rows =
             sqlx::query("select dep_key, dep_value_hash from trace_deps where trace_id = $1")
@@ -160,7 +161,11 @@ where
         };
         let trace_hash = u64::from_le_bytes(trace_hash);
 
-        let trace = Trace { key, deps, value };
+        let trace = Trace {
+            key: trace_key,
+            deps,
+            value: trace_value,
+        };
 
         debug_assert_eq!(trace_hash, trace.xxhash());
 
