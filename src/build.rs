@@ -40,15 +40,15 @@ pub trait BuildSystem: Sized + 'static {
     }
 }
 
-struct State<T: BuildSystem> {
+struct State<B: BuildSystem> {
     db: SqlitePool,
-    done: papaya::HashMap<T::Key, SetOnce<()>>,
-    store: papaya::HashMap<T::Key, T::Value>,
+    done: papaya::HashMap<B::Key, SetOnce<()>>,
+    store: papaya::HashMap<B::Key, B::Value>,
     debug_use_stubs: AtomicBool,
     debug_task_count: AtomicUsize,
 }
 
-impl<T: BuildSystem> State<T> {
+impl<B: BuildSystem> State<B> {
     fn new(db: SqlitePool) -> Arc<Self> {
         Arc::new(Self {
             db,
@@ -60,7 +60,7 @@ impl<T: BuildSystem> State<T> {
     }
 
     #[async_recursion]
-    async fn realize(self: Arc<Self>, key: T::Key) -> anyhow::Result<T::Value> {
+    async fn realize(self: Arc<Self>, key: B::Key) -> anyhow::Result<B::Value> {
         let done = self.done.pin_owned();
 
         let mut is_done = true;
@@ -93,7 +93,7 @@ impl<T: BuildSystem> State<T> {
         Ok(value)
     }
 
-    async fn fetch(self: Arc<Self>, key: &T::Key) -> anyhow::Result<Option<T::Value>> {
+    async fn fetch(self: Arc<Self>, key: &B::Key) -> anyhow::Result<Option<B::Value>> {
         let traces = fetch_traces(&self.db, Some(key)).await?;
 
         let mut matches = HashSet::new();
@@ -124,14 +124,14 @@ impl<T: BuildSystem> State<T> {
         }
     }
 
-    async fn build(self: Arc<Self>, key: &T::Key) -> anyhow::Result<T::Value> {
+    async fn build(self: Arc<Self>, key: &B::Key) -> anyhow::Result<B::Value> {
         let task_cx = Arc::new(TaskContext::new(self.clone()));
 
         // If a task is impure or cheaper to rebuild than to cache, mark it as volatile to skip
         // recording traces.
         //
         // For example: reading a file directly (i.e. not via an intermediate file I/O task).
-        let (value, volatile) = T::tasks(task_cx.clone(), key.clone()).await?;
+        let (value, volatile) = B::tasks(task_cx.clone(), key.clone()).await?;
 
         if !volatile {
             insert_trace(
@@ -149,20 +149,20 @@ impl<T: BuildSystem> State<T> {
     }
 }
 
-pub struct TaskContext<T: BuildSystem> {
-    state: Arc<State<T>>,
-    deps: papaya::HashMap<T::Key, u64>,
+pub struct TaskContext<B: BuildSystem> {
+    state: Arc<State<B>>,
+    deps: papaya::HashMap<B::Key, u64>,
 }
 
-impl<T: BuildSystem> TaskContext<T> {
-    fn new(state: Arc<State<T>>) -> Self {
+impl<B: BuildSystem> TaskContext<B> {
+    fn new(state: Arc<State<B>>) -> Self {
         Self {
             state,
             deps: papaya::HashMap::new(),
         }
     }
 
-    fn deps(&self) -> HashMap<T::Key, u64, BuildHasherDefault<XxHash3_64>> {
+    fn deps(&self) -> HashMap<B::Key, u64, BuildHasherDefault<XxHash3_64>> {
         let mut deps =
             HashMap::with_capacity_and_hasher(self.deps.len(), BuildHasherDefault::default());
 
@@ -173,7 +173,7 @@ impl<T: BuildSystem> TaskContext<T> {
         deps
     }
 
-    pub async fn realize(&self, key: T::Key) -> anyhow::Result<T::Value> {
+    pub async fn realize(&self, key: B::Key) -> anyhow::Result<B::Value> {
         let value = self.state.clone().realize(key.clone()).await?;
         self.deps.pin().insert(key, value.xxhash());
         Ok(value)
