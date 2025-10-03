@@ -26,7 +26,7 @@ impl<T> Value for T where T: trace::Value + Clone + Send + Sync {}
 
 pub type TaskFut<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
 
-pub trait BuildSystem: Sized + 'static {
+pub trait BuildSystem: 'static {
     type Key: Key;
 
     type Value: Value;
@@ -39,7 +39,7 @@ pub trait BuildSystem: Sized + 'static {
     }
 }
 
-struct State<B: BuildSystem> {
+struct State<B: BuildSystem + ?Sized> {
     db: SqlitePool,
     done: papaya::HashMap<B::Key, SetOnce<()>>,
     store: papaya::HashMap<B::Key, B::Value>,
@@ -47,7 +47,7 @@ struct State<B: BuildSystem> {
     debug_task_count: AtomicUsize,
 }
 
-impl<B: BuildSystem> State<B> {
+impl<B: BuildSystem + ?Sized> State<B> {
     fn new(db: SqlitePool) -> Arc<Self> {
         Arc::new(Self {
             db,
@@ -148,12 +148,12 @@ impl<B: BuildSystem> State<B> {
     }
 }
 
-pub struct TaskContext<B: BuildSystem> {
+pub struct TaskContext<B: BuildSystem + ?Sized> {
     state: Arc<State<B>>,
     deps: papaya::HashMap<B::Key, u64>,
 }
 
-impl<B: BuildSystem> TaskContext<B> {
+impl<B: BuildSystem + ?Sized> TaskContext<B> {
     fn new(state: Arc<State<B>>) -> Self {
         Self {
             state,
