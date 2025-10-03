@@ -16,13 +16,13 @@ use std::{
 use tokio::sync::SetOnce;
 use twox_hash::XxHash3_64;
 
-pub trait Key: trace::Key + Clone + Send + Sync + 'static {}
+pub trait Key: trace::Key + Clone + Send + Sync {}
 
-impl<T> Key for T where T: trace::Key + Clone + Send + Sync + 'static {}
+impl<T> Key for T where T: trace::Key + Clone + Send + Sync {}
 
-pub trait Value: trace::Value + Clone + Send + Sync + 'static {}
+pub trait Value: trace::Value + Clone + Send + Sync {}
 
-impl<T> Value for T where T: trace::Value + Clone + Send + Sync + 'static {}
+impl<T> Value for T where T: trace::Value + Clone + Send + Sync {}
 
 pub type TaskFut<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
 
