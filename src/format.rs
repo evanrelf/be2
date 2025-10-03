@@ -1,5 +1,5 @@
 use crate::{
-    build::{BuildSystem, Task, TaskContext},
+    build::{BuildSystem, TaskContext, TaskFut},
     util::flatten,
 };
 use bytes::Bytes;
@@ -187,7 +187,7 @@ async fn task_fourmolu(
 impl BuildSystem for FormatSystem {
     type Key = Key;
     type Value = Value;
-    fn tasks(cx: Arc<TaskContext<FormatSystem>>, key: Key) -> Task<Value> {
+    fn tasks(cx: Arc<TaskContext<FormatSystem>>, key: Key) -> TaskFut<Value> {
         match key {
             Key::ReadFile(path) => Box::pin(async move {
                 let bytes = task_read_file(cx, path).await?;

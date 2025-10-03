@@ -25,14 +25,14 @@ pub trait Value: trace::Value + Debug + Send + Sync + 'static {}
 
 impl<T> Value for T where T: trace::Value + Debug + Send + Sync + 'static {}
 
-pub type Task<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
+pub type TaskFut<V> = Pin<Box<dyn Future<Output = anyhow::Result<(V, bool)>> + Send>>;
 
 pub trait BuildSystem: Sized + 'static {
     type Key: Key;
 
     type Value: Value;
 
-    fn tasks(cx: Arc<TaskContext<Self>>, key: Self::Key) -> Task<Self::Value>;
+    fn tasks(cx: Arc<TaskContext<Self>>, key: Self::Key) -> TaskFut<Self::Value>;
 
     fn init(db: SqlitePool) -> Arc<TaskContext<Self>> {
         let state = State::<Self>::new(db);
