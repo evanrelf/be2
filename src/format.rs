@@ -134,12 +134,14 @@ async fn canonicalize(
     Ok(path)
 }
 
-#[expect(clippy::unused_async)]
 async fn task_canonicalize(
     _cx: Arc<TaskContext<FormatSystem>>,
-    _path: impl AsRef<Utf8Path>,
+    path: impl AsRef<Utf8Path>,
 ) -> anyhow::Result<Arc<Utf8Path>> {
-    todo!()
+    let path = fs::canonicalize(path.as_ref()).await?;
+    let path = Utf8PathBuf::try_from(path).unwrap();
+    let path = Arc::from(path.as_path());
+    Ok(path)
 }
 
 async fn which(
