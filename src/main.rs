@@ -3,7 +3,6 @@
 mod build;
 mod format;
 mod lint;
-mod task;
 mod trace;
 mod util;
 
