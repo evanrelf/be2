@@ -62,4 +62,11 @@ parserInfo = Options.info parse info
     pure Options{ command }
 
 run :: Options -> IO ()
-run _options = pure ()
+run options = do
+  case options.command of
+    Just (Haskell haskellOptions) -> runHaskell haskellOptions
+    Nothing -> runHaskell HaskellOptions{ input = Nothing }
+
+runHaskell :: HaskellOptions -> IO ()
+runHaskell _options = do
+  pure ()

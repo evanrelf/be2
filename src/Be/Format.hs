@@ -9,6 +9,7 @@ where
 
 import Options.Applicative qualified as Options
 import Prelude hiding (stdin)
+import UnliftIO.Async qualified as Async
 
 data Options = Options
   { command :: Maybe Command
@@ -71,4 +72,19 @@ parserInfo = Options.info parse info
     pure Options{ command }
 
 run :: Options -> IO ()
-run _options = pure ()
+run options = do
+  case options.command of
+    Just (Haskell haskellOptions) -> runHaskell haskellOptions
+    Just (Nix nixOptions) -> runNix nixOptions
+    Nothing -> do
+      Async.concurrently_
+        (runHaskell HaskellOptions{ input = Nothing })
+        (runNix NixOptions{ input = Nothing })
+
+runHaskell :: HaskellOptions -> IO ()
+runHaskell _options = do
+  pure ()
+
+runNix :: NixOptions -> IO ()
+runNix _options = do
+  pure ()

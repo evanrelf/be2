@@ -45,6 +45,7 @@ library
   hs-source-dirs: src
   build-depends:
     , optparse-applicative
+    , unliftio
   exposed-modules:
     , Be
     , Be.Format
