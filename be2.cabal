@@ -48,8 +48,10 @@ library
     , unliftio
   exposed-modules:
     , Be
+    , Be.Build
     , Be.Format
     , Be.Lint
+    , Be.Trace
 
 executable be2
   import:
