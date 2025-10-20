@@ -2,7 +2,7 @@
 
 module Be.Lint
   ( Options (..)
-  , parserInfo
+  , parser
   , run
   )
 where
@@ -28,8 +28,8 @@ data Input
   | Stdin
   deriving stock (Show)
 
-parserInfo :: Options.ParserInfo Options
-parserInfo = Options.info parse info
+parser :: Options.ParserInfo Options
+parser = Options.info parse info
   where
   info = mconcat
     [ Options.progDesc "Lint code"

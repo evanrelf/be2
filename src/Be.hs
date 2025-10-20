@@ -19,8 +19,8 @@ parseOptions :: Options.Parser Options
 parseOptions = do
   command <-
     Options.hsubparser . mconcat $
-      [ Options.command "format" $ fmap Format Format.parserInfo
-      , Options.command "lint" $ fmap Lint Lint.parserInfo
+      [ Options.command "format" (Format <$> Format.parser)
+      , Options.command "lint" (Lint <$> Lint.parser)
       , Options.command "clean" $
           Options.info (pure Clean) (Options.progDesc "Delete cache")
       ]

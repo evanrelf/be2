@@ -2,7 +2,7 @@
 
 module Be.Format
   ( Options (..)
-  , parserInfo
+  , parser
   , run
   )
 where
@@ -31,8 +31,8 @@ data Input
   = Paths (NonEmpty FilePath)
   | Stdin
 
-parserInfo :: Options.ParserInfo Options
-parserInfo = Options.info parse info
+parser :: Options.ParserInfo Options
+parser = Options.info parse info
   where
   info = mconcat
     [ Options.progDesc "Format code"
