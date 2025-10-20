@@ -47,6 +47,8 @@ library
     , hashable
     , optparse-applicative
     , serialise
+    , sqlite-simple
+    , string-interpolate
     , unliftio
     , xxhash-ffi
   exposed-modules:

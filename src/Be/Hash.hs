@@ -1,5 +1,5 @@
 module Be.Hash
-  ( Hash
+  ( Hash (..)
   , hash
   )
 where
