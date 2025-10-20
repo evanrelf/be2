@@ -16,11 +16,17 @@ data Options = Options
 
 data Command
   = Haskell HaskellOptions
+  deriving stock (Show)
 
 data HaskellOptions = HaskellOptions
-  { paths :: [FilePath]
-  , stdin :: Bool
+  { input :: Maybe Input
   }
+  deriving stock (Show)
+
+data Input
+  = Paths (NonEmpty FilePath)
+  | Stdin
+  deriving stock (Show)
 
 parserInfo :: Options.ParserInfo Options
 parserInfo = Options.info parse info
@@ -30,20 +36,21 @@ parserInfo = Options.info parse info
     ]
 
   parse = do
-    -- TODO: Make `paths` and `stdin` mutually exclusive
+    let parsePaths = do
+          fmap (Paths . fromList) . some . Options.strArgument . mconcat $
+            [ Options.metavar "PATHS"
+            , Options.help "Only lint specific paths"
+            ]
+
+    let parseStdin = do
+          Options.flag' Stdin . mconcat $
+            [ Options.long "stdin"
+            , Options.help "Lint code piped to `stdin`"
+            ]
 
     let parseHaskell = do
-          paths <-
-            many . Options.strArgument . mconcat $
-              [ Options.metavar "PATHS"
-              , Options.help "Only lint specific paths"
-              ]
-          stdin <-
-            Options.switch . mconcat $
-              [ Options.long "stdin"
-              , Options.help "Lint code piped to `stdin`"
-              ]
-          pure $ Haskell HaskellOptions{ paths, stdin }
+          input <- optional (parsePaths <|> parseStdin)
+          pure $ Haskell HaskellOptions{ input }
 
     command <-
       optional . Options.hsubparser . mconcat $

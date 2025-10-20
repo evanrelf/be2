@@ -29,8 +29,14 @@ parseOptions = do
 
 getOptions :: IO Options
 getOptions = do
-  let parserPrefs = Options.prefs mempty
-  let parserInfo = Options.info (Options.helper <*> parseOptions) mempty
+  let parserPrefs =
+        Options.prefs $ mconcat
+          [ Options.showHelpOnError
+          ]
+  let parserInfo =
+        Options.info (Options.helper <*> parseOptions) . mconcat $
+          [ Options.header "Evan's bespoke backend tooling"
+          ]
   Options.customExecParser parserPrefs parserInfo
 
 main :: IO ()
