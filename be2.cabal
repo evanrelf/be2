@@ -16,6 +16,8 @@ common common
     , BlockArguments
     , DeriveAnyClass
     , DerivingVia
+    , DuplicateRecordFields
+    , NoFieldSelectors
     , OverloadedRecordDot
     , OverloadedStrings
   ghc-options:
@@ -45,6 +47,8 @@ library
     , optparse-applicative
   exposed-modules:
     , Be
+    , Be.Format
+    , Be.Lint
 
 executable be2
   import:
