@@ -44,12 +44,16 @@ library
   import: common
   hs-source-dirs: src
   build-depends:
+    , hashable
     , optparse-applicative
+    , serialise
     , unliftio
+    , xxhash-ffi
   exposed-modules:
     , Be
     , Be.Build
     , Be.Format
+    , Be.Hash
     , Be.Lint
     , Be.Trace
 
