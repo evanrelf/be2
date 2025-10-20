@@ -10,10 +10,12 @@ where
 
 import Be.Hash (Hash (..), hash)
 import Codec.Serialise (Serialise, deserialise, serialise)
+import Data.ByteString.Builder qualified as ByteString
 import Data.Map.Strict qualified as Map
 import Data.String.Interpolate (iii)
 import Database.SQLite.Simple qualified as Sqlite
 import Prelude hiding (trace)
+import Witch (into)
 
 type Key a = (Ord a, Serialise a)
 
@@ -119,19 +121,18 @@ insertTrace :: (Key k, Value v) => Sqlite.Connection -> Trace k v -> IO Int64
 insertTrace connection trace = Sqlite.withTransaction connection do
   let keyBytes = serialise trace.key
   let valueBytes = serialise trace.value
-  -- TODO: Convert trace hash to little-endian bytes
-  let Hash traceHash = hash trace
+  let traceHashBytes = hashBytes trace
 
   Sqlite.execute
     connection
     "insert or ignore into traces (key, value, trace_hash) values (?, ?, ?)"
-    (keyBytes, valueBytes, traceHash)
+    (keyBytes, valueBytes, traceHashBytes)
 
   rows :: [(Int64, Bool)] <-
     Sqlite.query
       connection
       "select id, changes() == 0 as is_dupe from traces where trace_hash = ?"
-      (Sqlite.Only traceHash)
+      (Sqlite.Only traceHashBytes)
 
   (traceId, isDupe) <-
     case rows of
@@ -145,13 +146,21 @@ insertTrace connection trace = Sqlite.withTransaction connection do
     pure traceId
 
   else do
-    for_ (Map.assocs trace.deps) \(depKey, Hash depValueHash) -> do
+    for_ (Map.assocs trace.deps) \(depKey, depValueHash) -> do
       let depKeyBytes = serialise depKey
-      -- TODO: Convert dep value hash to little-endian bytes
+      let depValueHashBytes = hashBytes depValueHash
 
       Sqlite.execute
         connection
         "insert into trace_deps values (?, ?, ?)"
-        (traceId, depKeyBytes, depValueHash)
+        (traceId, depKeyBytes, depValueHashBytes)
 
     pure traceId
+
+hashBytes :: Serialise a => a -> LByteString
+hashBytes x =
+  x & hash
+    & (coerce :: Hash -> Int)
+    & into @Int64
+    & ByteString.int64LE
+    & ByteString.toLazyByteString

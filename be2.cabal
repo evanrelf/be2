@@ -50,6 +50,7 @@ library
     , sqlite-simple
     , string-interpolate
     , unliftio
+    , witch
     , xxhash-ffi
   exposed-modules:
     , Be
