@@ -9,7 +9,7 @@ module Be.Trace
 where
 
 import Be.Hash (Hash (..), hash)
-import Codec.Serialise (Serialise, serialise)
+import Codec.Serialise (Serialise, deserialise, serialise)
 import Data.Map.Strict qualified as Map
 import Data.String.Interpolate (iii)
 import Database.SQLite.Simple qualified as Sqlite
@@ -70,7 +70,50 @@ fetchTraces
   :: (Key k, Value v)
   => Sqlite.Connection -> Maybe k -> IO [Trace k v]
 fetchTraces connection mKey = Sqlite.withTransaction connection do
-  undefined
+  traceRows :: [(Int64, LByteString, LByteString, LByteString)] <-
+    case mKey of
+      Just key -> do
+        let keyBytes = serialise key
+        Sqlite.query
+          connection
+          "select id, key, value, trace_hash from traces where key = ?"
+          (Sqlite.Only keyBytes)
+      Nothing ->
+        Sqlite.query_
+          connection
+          "select id, key, value, trace_hash from traces"
+
+  forM traceRows \traceRow -> do
+    let (traceId, traceKeyBytes, traceValueBytes, traceHashBytes) = traceRow
+
+    let traceKey = deserialise traceKeyBytes
+    -- TODO: Assert key matches input if provided
+
+    let traceValue = deserialise traceValueBytes
+
+    depsRows :: [(LByteString, LByteString)] <-
+      Sqlite.query
+        connection
+        "select dep_key, dep_value_hash from trace_deps where trace_id = ?"
+        (Sqlite.Only traceId)
+
+    deps :: [(k, Hash)] <-
+      forM depsRows \(depKeyBytes, depValueHashBytes) -> do
+        let depKey = deserialise depKeyBytes
+        let depValueHash = undefined depValueHashBytes
+        pure (depKey, Hash depValueHash)
+
+    let traceHash = undefined traceHashBytes
+
+    let trace = Trace
+          { key = traceKey
+          , deps = Map.fromList deps
+          , value = traceValue
+          }
+
+    -- TODO: Assert trace's hash matches `traceHash`
+
+    pure trace
 
 insertTrace :: (Key k, Value v) => Sqlite.Connection -> Trace k v -> IO Int64
 insertTrace connection trace = Sqlite.withTransaction connection do
@@ -81,20 +124,13 @@ insertTrace connection trace = Sqlite.withTransaction connection do
 
   Sqlite.execute
     connection
-    [iii|
-      insert or ignore into traces (key, value, trace_hash)
-      values (?, ?, ?)
-    |]
+    "insert or ignore into traces (key, value, trace_hash) values (?, ?, ?)"
     (keyBytes, valueBytes, traceHash)
 
   rows :: [(Int64, Bool)] <-
     Sqlite.query
       connection
-      [iii|
-        select id, changes() == 0 as is_dupe
-        from traces
-        where trace_hash = ?
-      |]
+      "select id, changes() == 0 as is_dupe from traces where trace_hash = ?"
       (Sqlite.Only traceHash)
 
   (traceId, isDupe) <-
@@ -115,10 +151,7 @@ insertTrace connection trace = Sqlite.withTransaction connection do
 
       Sqlite.execute
         connection
-        [iii|
-          insert into trace_deps (trace_id, dep_key, dep_value_hash)
-          values (?, ?, ?)
-        |]
+        "insert into trace_deps values (?, ?, ?)"
         (traceId, depKeyBytes, depValueHash)
 
     pure traceId
