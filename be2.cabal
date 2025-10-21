@@ -44,14 +44,12 @@ library
   import: common
   hs-source-dirs: src
   build-depends:
-    , hashable
+    , ChibiHash
     , optparse-applicative
     , serialise
     , sqlite-simple
     , string-interpolate
     , unliftio
-    , witch
-    , xxhash-ffi
   exposed-modules:
     , Be
     , Be.Build
@@ -75,11 +73,12 @@ test-suite test
   main-is: Driver.hs
   hs-source-dirs: test
   build-depends:
+    , be2
     , hedgehog
+    , sqlite-simple
     , tasty
     , tasty-discover
     , tasty-hedgehog
     , tasty-hunit
-    , be2
   other-modules:
-    BeTest
+    Be.TraceTest

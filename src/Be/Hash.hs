@@ -4,12 +4,12 @@ module Be.Hash
   )
 where
 
+import ChibiHash (chibihash64)
 import Codec.Serialise (Serialise, serialise)
-import Data.Digest.XXHash.FFI (XXH3 (..))
-import Data.Hashable qualified as Hashable
 
-newtype Hash = Hash Int
-  deriving newtype (Serialise)
+newtype Hash = Hash Word64
+  deriving stock (Show)
+  deriving newtype (Eq, Serialise)
 
 hash :: Serialise a => a -> Hash
-hash x = Hash (Hashable.hash (XXH3 (serialise x)))
+hash x = Hash (chibihash64 (toStrict (serialise x)) 0)

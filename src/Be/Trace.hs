@@ -10,12 +10,11 @@ where
 
 import Be.Hash (Hash (..), hash)
 import Codec.Serialise (Serialise, deserialise, serialise)
-import Data.ByteString.Builder qualified as ByteString
+import Control.Exception (assert, onException)
 import Data.Map.Strict qualified as Map
 import Data.String.Interpolate (iii)
 import Database.SQLite.Simple qualified as Sqlite
-import Prelude hiding (trace)
-import Witch (into)
+import Prelude hiding (trace, traceId)
 
 type Key a = (Ord a, Serialise a)
 
@@ -26,7 +25,7 @@ data Trace k v = Trace
   , deps :: Map k Hash
   , value :: v
   }
-  deriving stock (Generic)
+  deriving stock (Generic, Eq, Show)
   deriving anyclass (Serialise)
 
 dbMigrate :: Sqlite.Connection -> IO ()
@@ -37,35 +36,40 @@ dbMigrate connection = Sqlite.withTransaction connection do
       key blob not null,
       value blob not null,
       trace_hash blob not null unique
-    ) strict;
-
+    ) strict
+  |]
+  Sqlite.execute_ connection [iii|
     create table if not exists trace_deps (
       trace_id integer not null references traces on delete cascade,
       dep_key blob not null,
       dep_value_hash blob not null,
       unique (trace_id, dep_key)
-    ) strict;
-
-    create index if not exists idx_traces_key on traces(key);
-
+    ) strict
+  |]
+  Sqlite.execute_ connection [iii|
+    create index if not exists idx_traces_key on traces(key)
+  |]
+  Sqlite.execute_ connection [iii|
     create trigger if not exists forbid_trace_update
     before update on traces
     begin
       select raise(abort, 'traces are immutable');
-    end;
-
+    end
+  |]
+  Sqlite.execute_ connection [iii|
     create trigger if not exists forbid_trace_deps_update
     before update on trace_deps
     begin
       select raise(abort, 'trace dependencies are immutable');
-    end;
-
+    end
+  |]
+  Sqlite.execute_ connection [iii|
     create trigger if not exists forbid_trace_deps_delete
     before delete on trace_deps
     when (select count(*) from traces where id = old.trace_id) > 0
     begin
       select raise(abort, 'trace dependencies cannot be deleted directly');
-    end;
+    end
   |]
 
 fetchTraces
@@ -89,7 +93,9 @@ fetchTraces connection mKey = Sqlite.withTransaction connection do
     let (traceId, traceKeyBytes, traceValueBytes, traceHashBytes) = traceRow
 
     let traceKey = deserialise traceKeyBytes
-    -- TODO: Assert key matches input if provided
+
+    whenJust mKey \key ->
+      assert (key == traceKey) $ pure ()
 
     let traceValue = deserialise traceValueBytes
 
@@ -102,10 +108,10 @@ fetchTraces connection mKey = Sqlite.withTransaction connection do
     deps :: [(k, Hash)] <-
       forM depsRows \(depKeyBytes, depValueHashBytes) -> do
         let depKey = deserialise depKeyBytes
-        let depValueHash = undefined depValueHashBytes
-        pure (depKey, Hash depValueHash)
+        let depValueHash = deserialise depValueHashBytes
+        pure (depKey, depValueHash)
 
-    let traceHash = undefined traceHashBytes
+    let traceHash = deserialise traceHashBytes
 
     let trace = Trace
           { key = traceKey
@@ -113,54 +119,51 @@ fetchTraces connection mKey = Sqlite.withTransaction connection do
           , value = traceValue
           }
 
-    -- TODO: Assert trace's hash matches `traceHash`
+    assert (hash trace == traceHash) $ pure ()
 
     pure trace
 
 insertTrace :: (Key k, Value v) => Sqlite.Connection -> Trace k v -> IO Int64
-insertTrace connection trace = Sqlite.withTransaction connection do
-  let keyBytes = serialise trace.key
-  let valueBytes = serialise trace.value
-  let traceHashBytes = hashBytes trace
+insertTrace connection trace =
+  flip onException (Sqlite.execute_ connection "rollback") do
+    Sqlite.execute_ connection "begin"
 
-  Sqlite.execute
-    connection
-    "insert or ignore into traces (key, value, trace_hash) values (?, ?, ?)"
-    (keyBytes, valueBytes, traceHashBytes)
+    let keyBytes = serialise trace.key
+    let valueBytes = serialise trace.value
+    let traceHashBytes = serialise (hash trace)
 
-  rows :: [(Int64, Bool)] <-
-    Sqlite.query
+    Sqlite.execute
       connection
-      "select id, changes() == 0 as is_dupe from traces where trace_hash = ?"
-      (Sqlite.Only traceHashBytes)
+      "insert or ignore into traces (key, value, trace_hash) values (?, ?, ?)"
+      (keyBytes, valueBytes, traceHashBytes)
 
-  (traceId, isDupe) <-
-    case rows of
-      [row] -> pure row
-      [] -> error "No rows"
-      _ : _ : _ -> error "More than one row"
-
-  if isDupe then do
-    putStrLn $ "warn: Trace " <> show traceId <> " already exists in database"
-    Sqlite.execute_ connection "rollback"
-    pure traceId
-
-  else do
-    for_ (Map.assocs trace.deps) \(depKey, depValueHash) -> do
-      let depKeyBytes = serialise depKey
-      let depValueHashBytes = hashBytes depValueHash
-
-      Sqlite.execute
+    rows :: [(Int64, Bool)] <-
+      Sqlite.query
         connection
-        "insert into trace_deps values (?, ?, ?)"
-        (traceId, depKeyBytes, depValueHashBytes)
+        "select id, changes() == 0 as is_dupe from traces where trace_hash = ?"
+        (Sqlite.Only traceHashBytes)
 
-    pure traceId
+    (traceId, isDupe) <-
+      case rows of
+        [row] -> pure row
+        [] -> error "No rows"
+        _ : _ : _ -> error "More than one row"
 
-hashBytes :: Serialise a => a -> LByteString
-hashBytes x =
-  x & hash
-    & (coerce :: Hash -> Int)
-    & into @Int64
-    & ByteString.int64LE
-    & ByteString.toLazyByteString
+    if isDupe then do
+      putStrLn $ "warn: Trace " <> show traceId <> " already exists in database"
+      Sqlite.execute_ connection "rollback"
+      pure traceId
+
+    else do
+      for_ (Map.assocs trace.deps) \(depKey, depValueHash) -> do
+        let depKeyBytes = serialise depKey
+        let depValueHashBytes = serialise depValueHash
+
+        Sqlite.execute
+          connection
+          "insert into trace_deps values (?, ?, ?)"
+          (traceId, depKeyBytes, depValueHashBytes)
+
+      Sqlite.execute_ connection "commit"
+
+      pure traceId
