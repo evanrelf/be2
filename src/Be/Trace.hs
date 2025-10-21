@@ -1,7 +1,9 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 module Be.Trace
-  ( Trace (..)
+  ( Key
+  , Value
+  , Trace (..)
   , dbMigrate
   , fetchTraces
   , insertTrace
