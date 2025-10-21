@@ -66,3 +66,20 @@ executable be2
     , executable
   main-is: src/Main.hs
   build-depends: be2
+
+test-suite test
+  import:
+    , common
+    , executable
+  type: exitcode-stdio-1.0
+  main-is: Driver.hs
+  hs-source-dirs: test
+  build-depends:
+    , hedgehog
+    , tasty
+    , tasty-discover
+    , tasty-hedgehog
+    , tasty-hunit
+    , be2
+  other-modules:
+    BeTest
