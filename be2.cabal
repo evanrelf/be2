@@ -75,10 +75,12 @@ test-suite test
   build-depends:
     , be2
     , hedgehog
+    , serialise
     , sqlite-simple
     , tasty
     , tasty-discover
     , tasty-hedgehog
     , tasty-hunit
   other-modules:
+    Be.BuildTest
     Be.TraceTest

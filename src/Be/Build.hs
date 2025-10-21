@@ -3,8 +3,11 @@
 
 module Be.Build
   ( BuildSystem (..)
+  , State (..)
+  , newState
+  , stateRealize
   , TaskContext (..)
-  , realize
+  , taskContextRealize
   )
 where
 
@@ -18,7 +21,7 @@ import Prelude hiding (State)
 class (IsKey (Key a), IsValue (Value a)) => BuildSystem a where
   type Key a :: Type
   type Value a :: Type
-  tasks :: Key a -> IO (Value a, Bool)
+  tasks :: TaskContext a -> Key a -> IO (Value a, Bool)
 
 data State b = State
   { connection :: Sqlite.Connection
@@ -48,9 +51,10 @@ stateFetch state key = do
 
 stateBuild :: forall b. BuildSystem b => State b -> Key b -> IO (Value b)
 stateBuild state key = do
-  (value, volatile) <- tasks @b key
+  taskContext <- atomically $ newTaskContext state
+  (value, volatile) <- tasks taskContext key
   when (not volatile) do
-    let deps = undefined
+    deps <- readTVarIO taskContext.deps
     _traceId <- insertTrace state.connection Trace{ key, deps, value }
     pure ()
   pure value
@@ -60,8 +64,13 @@ data TaskContext b = TaskContext
   , deps :: TVar (Map (Key b) Hash)
   }
 
-realize :: BuildSystem b => TaskContext b -> Key b -> IO (Value b)
-realize taskContext key = do
+newTaskContext :: State b -> STM (TaskContext b)
+newTaskContext state = do
+  deps <- newTVar Map.empty
+  pure TaskContext{ state, deps }
+
+taskContextRealize :: BuildSystem b => TaskContext b -> Key b -> IO (Value b)
+taskContextRealize taskContext key = do
   value <- stateRealize taskContext.state key
   atomically $ modifyTVar' taskContext.deps $ Map.insert key (hash value)
   pure value
