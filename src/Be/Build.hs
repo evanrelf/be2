@@ -21,17 +21,18 @@ import Prelude hiding (State, state, trace)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Async (forConcurrently_, race_)
 
-type Tasks k v = TaskContext k v -> k -> IO (v, Bool)
-
 data State k v = State
-  { tasks :: Tasks k v
+  { tasks :: TaskContext k v -> k -> IO (v, Bool)
   , connection :: Sqlite.Connection
   , done :: TVar (Map k (TMVar ()))
   , store :: TVar (Map k v)
   , debugTaskCount :: TVar Int
   }
 
-newState :: Sqlite.Connection -> Tasks k v -> STM (State k v)
+newState
+  :: Sqlite.Connection
+  -> (TaskContext k v -> k -> IO (v, Bool))
+  -> STM (State k v)
 newState connection tasks = do
   done <- newTVar Map.empty
   store <- newTVar Map.empty
@@ -72,9 +73,7 @@ stateRealize state key = do
         putTMVar barrier ()
       pure value
 
-stateFetch
-  :: forall k v. (IsKey k, IsValue v)
-  => State k v -> k -> IO (Maybe v)
+stateFetch :: forall k v. (IsKey k, IsValue v) => State k v -> k -> IO (Maybe v)
 stateFetch state key = do
   traces :: [Trace k v] <- fetchTraces state.connection (Just key)
 
@@ -121,7 +120,9 @@ taskContextRealize taskContext key = do
   atomically $ modifyTVar' taskContext.deps $ Map.insert key (hash value)
   pure value
 
-allConcurrently :: (Foldable f, MonadUnliftIO m) => (a -> m Bool) -> f a -> m Bool
+allConcurrently
+  :: (Foldable f, MonadUnliftIO m)
+  => (a -> m Bool) -> f a -> m Bool
 allConcurrently f xs = do
   m <- newEmptyMVar
   forConcurrently_ xs \x ->
