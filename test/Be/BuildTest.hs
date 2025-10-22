@@ -24,18 +24,14 @@ data TestValue
 
 data TestBuildSystem
 
-instance BuildSystem TestBuildSystem where
-  type Key _ = TestKey
-  type Value _ = TestValue
-
-readFile :: TaskContext TestBuildSystem -> FilePath -> IO ByteString
+readFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 readFile taskContext path = do
   let key = ReadFile path
   value <- taskContextRealize taskContext key
   let Bytes bytes = value
   pure bytes
 
-taskReadFile :: TaskContext TestBuildSystem -> FilePath -> IO ByteString
+taskReadFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 taskReadFile _taskContext path = do
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
@@ -47,14 +43,14 @@ taskReadFile _taskContext path = do
         _ -> error $ "Failed to read file at '" <> toText path <> "'"
   pure bytes
 
-concat :: TaskContext TestBuildSystem -> FilePath -> IO ByteString
+concat :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 concat taskContext path = do
   let key = Concat path
   value <- taskContextRealize taskContext key
   let Bytes bytes = value
   pure bytes
 
-taskConcat :: TaskContext TestBuildSystem -> FilePath -> IO ByteString
+taskConcat :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 taskConcat taskContext path = do
   bytes <- readFile taskContext path
   let text = decodeUtf8 bytes
@@ -83,7 +79,7 @@ unit_build_system = do
             let volatile = False
             pure (value, volatile)
 
-    state <- atomically $ newState @TestBuildSystem connection tasks
+    state <- atomically $ newState @TestKey @TestValue connection tasks
 
     let path = "/files"
 
@@ -140,7 +136,7 @@ unit_build_system = do
     taskCount <- readTVarIO state.debugTaskCount
     assertEqual "task count" taskCount 4
 
-    state' <- atomically $ newState @TestBuildSystem connection tasks
+    state' <- atomically $ newState @TestKey @TestValue connection tasks
 
     -- Second run should produce the same results...
 

@@ -3,8 +3,7 @@
 {-# LANGUAGE TypeFamilies #-}
 
 module Be.Build
-  ( BuildSystem (..)
-  , State (..)
+  ( State (..)
   , newState
   , stateRealize
   , TaskContext (..)
@@ -22,28 +21,24 @@ import Prelude hiding (State, state, trace)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Async (forConcurrently_, race_)
 
-class (IsKey (Key a), IsValue (Value a)) => BuildSystem a where
-  type Key a :: Type
-  type Value a :: Type
+type Tasks k v = TaskContext k v -> k -> IO (v, Bool)
 
-type Tasks b = TaskContext b -> Key b -> IO (Value b, Bool)
-
-data State b = State
-  { tasks :: Tasks b
+data State k v = State
+  { tasks :: Tasks k v
   , connection :: Sqlite.Connection
-  , done :: TVar (Map (Key b) (TMVar ()))
-  , store :: TVar (Map (Key b) (Value b))
+  , done :: TVar (Map k (TMVar ()))
+  , store :: TVar (Map k v)
   , debugTaskCount :: TVar Int
   }
 
-newState :: Sqlite.Connection -> Tasks b -> STM (State b)
+newState :: Sqlite.Connection -> Tasks k v -> STM (State k v)
 newState connection tasks = do
   done <- newTVar Map.empty
   store <- newTVar Map.empty
   debugTaskCount <- newTVar 0
   pure State{ tasks, connection, done, store, debugTaskCount }
 
-stateRealize :: BuildSystem b => State b -> Key b -> IO (Value b)
+stateRealize :: (IsKey k, IsValue v) => State k v -> k -> IO v
 stateRealize state key = do
   eBarrier <- atomically do
     done <- readTVar state.done
@@ -78,12 +73,12 @@ stateRealize state key = do
       pure value
 
 stateFetch
-  :: forall b. BuildSystem b
-  => State b -> Key b -> IO (Maybe (Value b))
+  :: forall k v. (IsKey k, IsValue v)
+  => State k v -> k -> IO (Maybe v)
 stateFetch state key = do
-  traces :: [Trace (Key b) (Value b)] <- fetchTraces state.connection (Just key)
+  traces :: [Trace k v] <- fetchTraces state.connection (Just key)
 
-  matches :: Set (Value b) <-
+  matches :: Set v <-
     Set.fromList . map (.value) <$> do
       traces & filterM \trace -> do
         assert (hash trace.key == hash key) $ pure ()
@@ -100,7 +95,7 @@ stateFetch state key = do
     | otherwise ->
         pure Nothing
 
-stateBuild :: forall b. BuildSystem b => State b -> Key b -> IO (Value b)
+stateBuild :: forall k v. (IsKey k, IsValue v) => State k v -> k -> IO v
 stateBuild state key = do
   taskContext <- atomically $ newTaskContext state
   (value, volatile) <- state.tasks taskContext key
@@ -110,17 +105,17 @@ stateBuild state key = do
     pure ()
   pure value
 
-data TaskContext b = TaskContext
-  { state :: State b
-  , deps :: TVar (Map (Key b) Hash)
+data TaskContext k v = TaskContext
+  { state :: State k v
+  , deps :: TVar (Map k Hash)
   }
 
-newTaskContext :: State b -> STM (TaskContext b)
+newTaskContext :: State k v -> STM (TaskContext k v)
 newTaskContext state = do
   deps <- newTVar Map.empty
   pure TaskContext{ state, deps }
 
-taskContextRealize :: BuildSystem b => TaskContext b -> Key b -> IO (Value b)
+taskContextRealize :: (IsKey k, IsValue v) => TaskContext k v -> k -> IO v
 taskContextRealize taskContext key = do
   value <- stateRealize taskContext.state key
   atomically $ modifyTVar' taskContext.deps $ Map.insert key (hash value)
