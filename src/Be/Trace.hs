@@ -77,7 +77,7 @@ dbMigrate connection = Sqlite.withTransaction connection do
 fetchTraces
   :: (IsKey k, IsValue v)
   => Sqlite.Connection -> Maybe k -> IO [Trace k v]
-fetchTraces connection mKey = Sqlite.withTransaction connection do
+fetchTraces connection mKey = {- TODO: why no worky? Sqlite.withTransaction connection -} do
   traceRows :: [(Int64, LByteString, LByteString, LByteString)] <-
     case mKey of
       Just key -> do

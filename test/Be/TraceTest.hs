@@ -7,8 +7,8 @@ import Database.SQLite.Simple qualified as Sqlite
 import Prelude hiding (trace)
 import Test.Tasty.HUnit
 
-unit_traceRoundtrip :: Assertion
-unit_traceRoundtrip =
+unit_trace_roundtrip :: Assertion
+unit_trace_roundtrip =
   Sqlite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 

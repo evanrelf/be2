@@ -19,7 +19,7 @@ data TestKey
 
 data TestValue
   = Bytes ByteString
-  deriving stock (Generic, Show, Eq)
+  deriving stock (Generic, Show, Eq, Ord)
   deriving anyclass (Serialise)
 
 data TestBuildSystem
@@ -76,8 +76,8 @@ taskConcat taskContext path = do
   output <- foldMapM (readFile taskContext) paths
   pure output
 
-unit_test :: Assertion
-unit_test = do
+unit_build_system :: Assertion
+unit_build_system = do
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
 
@@ -90,7 +90,7 @@ unit_test = do
 
     actualResult <- stateRealize state (Concat path)
     let expectedResult = Bytes (toBytes "AAAA\nAAAA\nBBBB\n")
-    expectedResult @=? actualResult
+    assertEqual "result" expectedResult actualResult
 
     let expectedStore = Map.fromList
           [ ( ReadFile "/files"
@@ -107,7 +107,7 @@ unit_test = do
             )
           ]
     actualStore <- readTVarIO state.store
-    expectedStore @=? actualStore
+    assertEqual "store" expectedStore actualStore
 
     let expectedDone = fmap (const True) expectedStore
     actualDone <- do
@@ -115,47 +115,47 @@ unit_test = do
       forM done \tmvar -> do
         isEmpty <- atomically $ isEmptyTMVar tmvar
         pure (not isEmpty)
-    expectedDone @=? actualDone
+    assertEqual "done" expectedDone actualDone
 
     let expectedTraces =
           [ Trace
               { key = Concat "/files"
               , deps = Map.fromList
                   [ ( ReadFile "/files"
-                    , Hash 1111
+                    , Hash 217649648357837811
                     )
                   , ( ReadFile "/files/a"
-                    , Hash 2222
+                    , Hash 7664945061632064206
                     )
                   , ( ReadFile "/files/b"
-                    , Hash 3333
+                    , Hash 2092587128809980294
                     )
                   ]
               , value = Bytes (toBytes "AAAA\nAAAA\nBBBB\n")
               }
           ]
     actualTraces :: [Trace TestKey TestValue] <- fetchTraces connection Nothing
-    expectedTraces @=? actualTraces
+    assertEqual "traces" expectedTraces actualTraces
 
     -- TODO: Assert `debug_task_count == 4` (3 read files, 1 concat).
 
     state' <- atomically $ newState @TestBuildSystem connection
 
     actualResult' <- stateRealize state' (Concat path)
-    expectedResult @=? actualResult'
+    assertEqual "result'" expectedResult actualResult'
 
     actualStore' <- readTVarIO state'.store
-    expectedStore @=? actualStore'
+    assertEqual "store'" expectedStore actualStore'
 
     actualDone' <- do
       done <- readTVarIO state'.done
       forM done \tmvar -> do
         isEmpty <- atomically $ isEmptyTMVar tmvar
         pure (not isEmpty)
-    expectedDone @=? actualDone'
+    assertEqual "done'" expectedDone actualDone'
 
     actualTraces' :: [Trace TestKey TestValue] <- fetchTraces connection Nothing
-    expectedTraces @=? actualTraces'
+    assertEqual "traces'" expectedTraces actualTraces'
 
     -- TODO: Assert `debug_task_count == 3` (3 read files, 0 concat).
 

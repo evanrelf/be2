@@ -18,7 +18,7 @@ import Control.Exception (assert)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
 import Database.SQLite.Simple qualified as Sqlite
-import Prelude hiding (State)
+import Prelude hiding (State, state, trace)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Async (forConcurrently_, race_)
 
@@ -33,7 +33,7 @@ data State b = State
   , store :: TVar (Map (Key b) (Value b))
   }
 
-newState :: BuildSystem b => Sqlite.Connection -> STM (State b)
+newState :: Sqlite.Connection -> STM (State b)
 newState connection = do
   done <- newTVar Map.empty
   store <- newTVar Map.empty
@@ -41,18 +41,35 @@ newState connection = do
 
 stateRealize :: BuildSystem b => State b -> Key b -> IO (Value b)
 stateRealize state key = do
-  -- TODO: Stuff
+  eBarrier <- atomically do
+    done <- readTVar state.done
+    case Map.lookup key done of
+      Just barrier -> pure (Right barrier)
+      Nothing -> do
+        barrier <- newEmptyTMVar
+        modifyTVar' state.done (Map.insert key barrier)
+        pure (Left barrier)
 
-  value <-
-    stateFetch state key >>= \case
-      Just value -> pure value
-      Nothing -> stateBuild state key
+  case eBarrier of
+    Right barrier -> atomically do
+      readTMVar barrier
+      store <- readTVar state.store
+      -- SAFETY: The key is marked as done, so it has already been built, and
+      -- its value is present in the store.
+      let value = fromMaybe (error "unreachable") (Map.lookup key store)
+      pure value
 
-  -- TODO: Insert (key, value) into store
-
-  -- TODO: Mark key as done (populate TMVar)
-
-  pure value
+    Left barrier -> do
+      value <-
+        stateFetch state key >>= \case
+          Just value -> pure value
+          Nothing -> stateBuild state key
+      atomically do
+        modifyTVar' state.store (Map.insert key value)
+        -- SAFETY: The key has not been marked as done yet, and no other tasks
+        -- will attempt to.
+        putTMVar barrier ()
+      pure value
 
 stateFetch
   :: forall b. BuildSystem b
@@ -102,15 +119,6 @@ taskContextRealize taskContext key = do
   value <- stateRealize taskContext.state key
   atomically $ modifyTVar' taskContext.deps $ Map.insert key (hash value)
   pure value
-
-anyConcurrently :: (Foldable f, MonadUnliftIO m) => (a -> m Bool) -> f a -> m Bool
-anyConcurrently f xs = do
-  m <- newEmptyMVar
-  forConcurrently_ xs \x ->
-    race_
-      (whenM (f x) (void (tryPutMVar m ())))
-      (readMVar m)
-  isJust <$> tryReadMVar m
 
 allConcurrently :: (Foldable f, MonadUnliftIO m) => (a -> m Bool) -> f a -> m Bool
 allConcurrently f xs = do
