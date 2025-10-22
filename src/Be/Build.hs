@@ -1,6 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE MultiWayIf #-}
-{-# LANGUAGE TypeFamilies #-}
 
 module Be.Build
   ( State (..)
@@ -12,7 +11,7 @@ module Be.Build
 where
 
 import Be.Hash (Hash, hash)
-import Be.Trace (IsKey, IsValue, Trace (..), fetchTraces, insertTrace)
+import Be.Trace (Key, Trace (..), Value, fetchTraces, insertTrace)
 import Control.Exception (assert)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
@@ -39,7 +38,7 @@ newState connection tasks = do
   debugTaskCount <- newTVar 0
   pure State{ tasks, connection, done, store, debugTaskCount }
 
-stateRealize :: (IsKey k, IsValue v) => State k v -> k -> IO v
+stateRealize :: (Key k, Value v) => State k v -> k -> IO v
 stateRealize state key = do
   eBarrier <- atomically do
     done <- readTVar state.done
@@ -73,7 +72,7 @@ stateRealize state key = do
         putTMVar barrier ()
       pure value
 
-stateFetch :: forall k v. (IsKey k, IsValue v) => State k v -> k -> IO (Maybe v)
+stateFetch :: forall k v. (Key k, Value v) => State k v -> k -> IO (Maybe v)
 stateFetch state key = do
   traces :: [Trace k v] <- fetchTraces state.connection (Just key)
 
@@ -94,7 +93,7 @@ stateFetch state key = do
     | otherwise ->
         pure Nothing
 
-stateBuild :: forall k v. (IsKey k, IsValue v) => State k v -> k -> IO v
+stateBuild :: forall k v. (Key k, Value v) => State k v -> k -> IO v
 stateBuild state key = do
   taskContext <- atomically $ newTaskContext state
   (value, volatile) <- state.tasks taskContext key
@@ -114,7 +113,7 @@ newTaskContext state = do
   deps <- newTVar Map.empty
   pure TaskContext{ state, deps }
 
-taskContextRealize :: (IsKey k, IsValue v) => TaskContext k v -> k -> IO v
+taskContextRealize :: (Key k, Value v) => TaskContext k v -> k -> IO v
 taskContextRealize taskContext key = do
   value <- stateRealize taskContext.state key
   atomically $ modifyTVar' taskContext.deps $ Map.insert key (hash value)

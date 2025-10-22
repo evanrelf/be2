@@ -1,8 +1,8 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 module Be.Trace
-  ( IsKey
-  , IsValue
+  ( Key
+  , Value
   , Trace (..)
   , dbMigrate
   , fetchTraces
@@ -18,9 +18,9 @@ import Data.String.Interpolate (iii)
 import Database.SQLite.Simple qualified as Sqlite
 import Prelude hiding (trace, traceId)
 
-type IsKey a = (Ord a, Serialise a)
+type Key a = (Ord a, Serialise a)
 
-type IsValue a = (Ord a, Serialise a)
+type Value a = (Ord a, Serialise a)
 
 data Trace k v = Trace
   { key :: k
@@ -75,7 +75,7 @@ dbMigrate connection = Sqlite.withTransaction connection do
   |]
 
 fetchTraces
-  :: (IsKey k, IsValue v)
+  :: (Key k, Value v)
   => Sqlite.Connection -> Maybe k -> IO [Trace k v]
 fetchTraces connection mKey = do
   traceRows :: [(Int64, LByteString, LByteString, LByteString)] <-
@@ -125,9 +125,7 @@ fetchTraces connection mKey = do
 
     pure trace
 
-insertTrace
-  :: (IsKey k, IsValue v)
-  => Sqlite.Connection -> Trace k v -> IO Int64
+insertTrace :: (Key k, Value v) => Sqlite.Connection -> Trace k v -> IO Int64
 insertTrace connection trace =
   flip onException (Sqlite.execute_ connection "rollback") do
     Sqlite.execute_ connection "begin"

@@ -1,5 +1,3 @@
-{-# LANGUAGE TypeFamilies #-}
-
 module Be.BuildTest where
 
 import Be.Build
@@ -21,8 +19,6 @@ data TestValue
   = Bytes ByteString
   deriving stock (Generic, Show, Eq, Ord)
   deriving anyclass (Serialise)
-
-data TestBuildSystem
 
 readFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 readFile taskContext path = do
