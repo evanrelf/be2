@@ -26,21 +26,7 @@ data TestBuildSystem
 
 instance BuildSystem TestBuildSystem where
   type Key _ = TestKey
-
   type Value _ = TestValue
-
-  tasks taskContext = \case
-    ReadFile path -> do
-      bytes <- taskReadFile taskContext path
-      let value = Bytes bytes
-      let volatile = True
-      pure (value, volatile)
-
-    Concat path -> do
-      bytes <- taskConcat taskContext path
-      let value = Bytes bytes
-      let volatile = False
-      pure (value, volatile)
 
 readFile :: TaskContext TestBuildSystem -> FilePath -> IO ByteString
 readFile taskContext path = do
@@ -84,7 +70,20 @@ unit_build_system = do
   Sqlite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
-    state <- atomically $ newState @TestBuildSystem connection
+    let tasks taskContext = \case
+          ReadFile path -> do
+            bytes <- taskReadFile taskContext path
+            let value = Bytes bytes
+            let volatile = True
+            pure (value, volatile)
+
+          Concat path -> do
+            bytes <- taskConcat taskContext path
+            let value = Bytes bytes
+            let volatile = False
+            pure (value, volatile)
+
+    state <- atomically $ newState @TestBuildSystem connection tasks
 
     let path = "/files"
 
@@ -139,7 +138,7 @@ unit_build_system = do
 
     -- TODO: Assert `debug_task_count == 4` (3 read files, 1 concat).
 
-    state' <- atomically $ newState @TestBuildSystem connection
+    state' <- atomically $ newState @TestBuildSystem connection tasks
 
     actualResult' <- stateRealize state' (Concat path)
     assertEqual "result'" expectedResult actualResult'

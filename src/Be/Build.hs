@@ -25,19 +25,21 @@ import UnliftIO.Async (forConcurrently_, race_)
 class (IsKey (Key a), IsValue (Value a)) => BuildSystem a where
   type Key a :: Type
   type Value a :: Type
-  tasks :: TaskContext a -> Key a -> IO (Value a, Bool)
+
+type Tasks b = TaskContext b -> Key b -> IO (Value b, Bool)
 
 data State b = State
-  { connection :: Sqlite.Connection
+  { tasks :: Tasks b
+  , connection :: Sqlite.Connection
   , done :: TVar (Map (Key b) (TMVar ()))
   , store :: TVar (Map (Key b) (Value b))
   }
 
-newState :: Sqlite.Connection -> STM (State b)
-newState connection = do
+newState :: Sqlite.Connection -> Tasks b -> STM (State b)
+newState connection tasks = do
   done <- newTVar Map.empty
   store <- newTVar Map.empty
-  pure State{ connection, done, store }
+  pure State{ tasks, connection, done, store }
 
 stateRealize :: BuildSystem b => State b -> Key b -> IO (Value b)
 stateRealize state key = do
@@ -97,7 +99,7 @@ stateFetch state key = do
 stateBuild :: forall b. BuildSystem b => State b -> Key b -> IO (Value b)
 stateBuild state key = do
   taskContext <- atomically $ newTaskContext state
-  (value, volatile) <- tasks taskContext key
+  (value, volatile) <- state.tasks taskContext key
   when (not volatile) do
     deps <- readTVarIO taskContext.deps
     _traceId <- insertTrace state.connection Trace{ key, deps, value }
