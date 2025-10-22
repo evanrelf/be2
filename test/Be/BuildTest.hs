@@ -136,26 +136,33 @@ unit_build_system = do
     actualTraces :: [Trace TestKey TestValue] <- fetchTraces connection Nothing
     assertEqual "traces" expectedTraces actualTraces
 
-    -- TODO: Assert `debug_task_count == 4` (3 read files, 1 concat).
+    -- 3 `readFile`s, 1 `concat`
+    taskCount <- readTVarIO state.debugTaskCount
+    assertEqual "task count" taskCount 4
 
     state' <- atomically $ newState @TestBuildSystem connection tasks
 
+    -- Second run should produce the same results...
+
     actualResult' <- stateRealize state' (Concat path)
-    assertEqual "result'" expectedResult actualResult'
+    assertEqual "result 2" expectedResult actualResult'
 
     actualStore' <- readTVarIO state'.store
-    assertEqual "store'" expectedStore actualStore'
+    assertEqual "store 2" expectedStore actualStore'
 
     actualDone' <- do
       done <- readTVarIO state'.done
       forM done \tmvar -> do
         isEmpty <- atomically $ isEmptyTMVar tmvar
         pure (not isEmpty)
-    assertEqual "done'" expectedDone actualDone'
+    assertEqual "done 2" expectedDone actualDone'
 
     actualTraces' :: [Trace TestKey TestValue] <- fetchTraces connection Nothing
-    assertEqual "traces'" expectedTraces actualTraces'
+    assertEqual "traces 2" expectedTraces actualTraces'
 
-    -- TODO: Assert `debug_task_count == 3` (3 read files, 0 concat).
+    -- ...but not run any non-volatile tasks, because they're cached.
+    -- 3 `readFile`s (volatile), 1 `concat` (non-volatile)
+    taskCount' <- readTVarIO state'.debugTaskCount
+    assertEqual "task count 2" taskCount' 3
 
     pure ()

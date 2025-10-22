@@ -33,13 +33,15 @@ data State b = State
   , connection :: Sqlite.Connection
   , done :: TVar (Map (Key b) (TMVar ()))
   , store :: TVar (Map (Key b) (Value b))
+  , debugTaskCount :: TVar Int
   }
 
 newState :: Sqlite.Connection -> Tasks b -> STM (State b)
 newState connection tasks = do
   done <- newTVar Map.empty
   store <- newTVar Map.empty
-  pure State{ tasks, connection, done, store }
+  debugTaskCount <- newTVar 0
+  pure State{ tasks, connection, done, store, debugTaskCount }
 
 stateRealize :: BuildSystem b => State b -> Key b -> IO (Value b)
 stateRealize state key = do
@@ -65,7 +67,9 @@ stateRealize state key = do
       value <-
         stateFetch state key >>= \case
           Just value -> pure value
-          Nothing -> stateBuild state key
+          Nothing -> do
+            atomically $ modifyTVar' state.debugTaskCount (+ 1)
+            stateBuild state key
       atomically do
         modifyTVar' state.store (Map.insert key value)
         -- SAFETY: The key has not been marked as done yet, and no other tasks
