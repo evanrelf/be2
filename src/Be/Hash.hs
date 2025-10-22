@@ -9,7 +9,7 @@ import Codec.Serialise (Serialise, serialise)
 
 newtype Hash = Hash Word64
   deriving stock (Show)
-  deriving newtype (Eq, Serialise)
+  deriving newtype (Eq, Ord, Serialise)
 
 hash :: Serialise a => a -> Hash
 hash x = Hash (chibihash64 (toStrict (serialise x)) 0)

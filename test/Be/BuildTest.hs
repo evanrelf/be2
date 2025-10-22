@@ -3,12 +3,12 @@
 module Be.BuildTest where
 
 import Be.Build
+import Be.Hash (Hash (..))
 import Be.Trace
 import Codec.Serialise (Serialise)
 import Data.Map.Strict qualified as Map
 import Database.SQLite.Simple qualified as Sqlite
-import Prelude hiding (concat, readFile)
-import Prelude qualified
+import Prelude hiding (concat, readFile, state)
 import Test.Tasty.HUnit
 
 data TestKey
@@ -50,7 +50,7 @@ readFile taskContext path = do
   pure bytes
 
 taskReadFile :: TaskContext TestBuildSystem -> FilePath -> IO ByteString
-taskReadFile taskContext path = do
+taskReadFile _taskContext path = do
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
   let bytes = case path of
@@ -109,17 +109,28 @@ unit_test = do
     actualStore <- readTVarIO state.store
     expectedStore @=? actualStore
 
-    -- TODO: Convert `Map (Key b) (TMVar ())` to `Map (Key b) Bool` so the
-    -- assert has a `Show` instance.
-
-    -- let expectedDone = undefined
-    -- actualDone <- readTVarIO state.done
-    -- expectedDone @=? actualDone
+    let expectedDone = fmap (const True) expectedStore
+    actualDone <- do
+      done <- readTVarIO state.done
+      forM done \tmvar -> do
+        isEmpty <- atomically $ isEmptyTMVar tmvar
+        pure (not isEmpty)
+    expectedDone @=? actualDone
 
     let expectedTraces =
           [ Trace
               { key = Concat "/files"
-              , deps = undefined
+              , deps = Map.fromList
+                  [ ( ReadFile "/files"
+                    , Hash 1111
+                    )
+                  , ( ReadFile "/files/a"
+                    , Hash 2222
+                    )
+                  , ( ReadFile "/files/b"
+                    , Hash 3333
+                    )
+                  ]
               , value = Bytes (toBytes "AAAA\nAAAA\nBBBB\n")
               }
           ]
@@ -128,7 +139,24 @@ unit_test = do
 
     -- TODO: Assert `debug_task_count == 4` (3 read files, 1 concat).
 
-    -- TODO: Run it again, check that result + store + done + traces are same
-    -- but `debug_task_count == 3` (3 read files, 0 concat).
+    state' <- atomically $ newState @TestBuildSystem connection
+
+    actualResult' <- stateRealize state' (Concat path)
+    expectedResult @=? actualResult'
+
+    actualStore' <- readTVarIO state'.store
+    expectedStore @=? actualStore'
+
+    actualDone' <- do
+      done <- readTVarIO state'.done
+      forM done \tmvar -> do
+        isEmpty <- atomically $ isEmptyTMVar tmvar
+        pure (not isEmpty)
+    expectedDone @=? actualDone'
+
+    actualTraces' :: [Trace TestKey TestValue] <- fetchTraces connection Nothing
+    expectedTraces @=? actualTraces'
+
+    -- TODO: Assert `debug_task_count == 3` (3 read files, 0 concat).
 
     pure ()

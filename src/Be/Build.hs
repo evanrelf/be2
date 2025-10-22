@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Be.Build
@@ -15,8 +16,11 @@ import Be.Hash (Hash, hash)
 import Be.Trace (IsKey, IsValue, Trace (..), fetchTraces, insertTrace)
 import Control.Exception (assert)
 import Data.Map.Strict qualified as Map
+import Data.Set qualified as Set
 import Database.SQLite.Simple qualified as Sqlite
 import Prelude hiding (State)
+import UnliftIO (MonadUnliftIO)
+import UnliftIO.Async (forConcurrently_, race_)
 
 class (IsKey (Key a), IsValue (Value a)) => BuildSystem a where
   type Key a :: Type
@@ -37,17 +41,41 @@ newState connection = do
 
 stateRealize :: BuildSystem b => State b -> Key b -> IO (Value b)
 stateRealize state key = do
-  undefined
+  -- TODO: Stuff
 
-stateFetch :: BuildSystem b => State b -> Key b -> IO (Maybe (Value b))
+  value <-
+    stateFetch state key >>= \case
+      Just value -> pure value
+      Nothing -> stateBuild state key
+
+  -- TODO: Insert (key, value) into store
+
+  -- TODO: Mark key as done (populate TMVar)
+
+  pure value
+
+stateFetch
+  :: forall b. BuildSystem b
+  => State b -> Key b -> IO (Maybe (Value b))
 stateFetch state key = do
-  undefined
-  -- traces <- fetchTraces state.connection (Just key)
-  -- matches <-
-  --   forM traces \trace -> do
-  --     assert (hash trace.key == hash key) $ pure ()
-  --     undefined
-  -- undefined
+  traces :: [Trace (Key b) (Value b)] <- fetchTraces state.connection (Just key)
+
+  matches :: Set (Value b) <-
+    Set.fromList . map (.value) <$> do
+      traces & filterM \trace -> do
+        assert (hash trace.key == hash key) $ pure ()
+        Map.assocs trace.deps & allConcurrently \(depKey, depValueHash) -> do
+          depValue <- stateRealize state depKey
+          pure (depValueHash == hash depValue)
+
+  store <- readTVarIO state.store
+
+  if| Just storeValue <- Map.lookup key store, Set.member storeValue matches ->
+        pure (Just storeValue)
+    | Just cachedValue <- Set.lookupMin matches ->
+        pure (Just cachedValue)
+    | otherwise ->
+        pure Nothing
 
 stateBuild :: forall b. BuildSystem b => State b -> Key b -> IO (Value b)
 stateBuild state key = do
@@ -74,3 +102,21 @@ taskContextRealize taskContext key = do
   value <- stateRealize taskContext.state key
   atomically $ modifyTVar' taskContext.deps $ Map.insert key (hash value)
   pure value
+
+anyConcurrently :: (Foldable f, MonadUnliftIO m) => (a -> m Bool) -> f a -> m Bool
+anyConcurrently f xs = do
+  m <- newEmptyMVar
+  forConcurrently_ xs \x ->
+    race_
+      (whenM (f x) (void (tryPutMVar m ())))
+      (readMVar m)
+  isJust <$> tryReadMVar m
+
+allConcurrently :: (Foldable f, MonadUnliftIO m) => (a -> m Bool) -> f a -> m Bool
+allConcurrently f xs = do
+  m <- newEmptyMVar
+  forConcurrently_ xs \x ->
+    race_
+      (unlessM (f x) (void (tryPutMVar m ())))
+      (readMVar m)
+  isNothing <$> tryReadMVar m

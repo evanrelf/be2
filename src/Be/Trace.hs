@@ -20,14 +20,14 @@ import Prelude hiding (trace, traceId)
 
 type IsKey a = (Ord a, Serialise a)
 
-type IsValue a = Serialise a
+type IsValue a = (Ord a, Serialise a)
 
 data Trace k v = Trace
   { key :: k
   , deps :: Map k Hash
   , value :: v
   }
-  deriving stock (Generic, Eq, Show)
+  deriving stock (Generic, Eq, Ord, Show)
   deriving anyclass (Serialise)
 
 dbMigrate :: Sqlite.Connection -> IO ()
