@@ -15,7 +15,7 @@ import Be.Trace (Trace (..), fetchTraces, insertTrace)
 import Be.Value (Value)
 import Control.Exception (assert)
 import Data.HashMap.Strict qualified as HashMap
-import Data.Set qualified as Set
+import Data.HashSet qualified as HashSet
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (State, state, trace)
 import UnliftIO (MonadUnliftIO)
@@ -77,8 +77,8 @@ stateFetch :: forall k v. (Value k, Value v) => State k v -> k -> IO (Maybe v)
 stateFetch state key = do
   traces :: [Trace k v] <- fetchTraces state.connection (Just key)
 
-  matches :: Set v <-
-    Set.fromList . map (.value) <$> do
+  matches :: HashSet v <-
+    HashSet.fromList . map (.value) <$> do
       traces & filterM \trace -> do
         assert (hash trace.key == hash key) $ pure ()
         HashMap.toList trace.deps & allConcurrently \(depKey, depValueHash) -> do
@@ -88,9 +88,9 @@ stateFetch state key = do
   store <- readTVarIO state.store
 
   if| Just storeValue <- HashMap.lookup key store
-    , Set.member storeValue matches ->
+    , HashSet.member storeValue matches ->
         pure (Just storeValue)
-    | Just cachedValue <- Set.lookupMin matches ->
+    | Just cachedValue <- viaNonEmpty head (HashSet.toList matches) ->
         pure (Just cachedValue)
     | otherwise ->
         pure Nothing
