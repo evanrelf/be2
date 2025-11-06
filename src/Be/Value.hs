@@ -20,28 +20,10 @@ import Type.Reflection (SomeTypeRep, TypeRep, eqTypeRep, someTypeRep, typeRep, (
 
 class (Typeable a, Show a, Serialise a, Hashable a) => Value a
 
-valueRegistry :: IORef (HashMap SomeTypeRep (SomeDict Value))
-valueRegistry = unsafePerformIO $ newIORef HashMap.empty
-{-# NOINLINE valueRegistry #-}
-
-registerValues :: TH.Code TH.Q (IO ())
-registerValues = [|| do
-    let dicts :: [SomeDict Value]
-        dicts = $$discoverInstances
-    let values = dicts
-          & map (\dict@(SomeDictOf proxy) -> (someTypeRep proxy, dict))
-          & HashMap.fromList
-    atomicModifyIORef' valueRegistry \vr -> (HashMap.union values vr, ())
-  ||]
-
-lookupValue :: SomeTypeRep -> Maybe (SomeDict Value)
-lookupValue t = unsafePerformIO do
-  vr <- readIORef valueRegistry
-  pure $ HashMap.lookup t vr
-{-# NOINLINE lookupValue #-}
-
 data SomeValue where
   SomeValue :: Value a => TypeRep a -> a -> SomeValue
+
+instance Value SomeValue
 
 deriving stock instance Show SomeValue
 
@@ -63,8 +45,6 @@ instance Serialise SomeValue where
       Just (SomeDictOf (Proxy @a)) -> SomeValue (typeRep @a) <$> decode @a
       Nothing -> fail $ "Type `" <> show t <> "` missing from value registry"
 
-instance Value SomeValue
-
 toSomeValue :: Value a => a -> SomeValue
 toSomeValue x = SomeValue typeRep x
 
@@ -73,3 +53,23 @@ fromSomeValue @a (SomeValue t x) =
   case eqTypeRep t (typeRep @a) of
     Just HRefl -> Just x
     Nothing -> Nothing
+
+valueRegistry :: IORef (HashMap SomeTypeRep (SomeDict Value))
+valueRegistry = unsafePerformIO $ newIORef HashMap.empty
+{-# NOINLINE valueRegistry #-}
+
+registerValues :: TH.Code TH.Q (IO ())
+registerValues = [|| do
+    let dicts :: [SomeDict Value]
+        dicts = $$discoverInstances
+    let values = dicts
+          & map (\dict@(SomeDictOf proxy) -> (someTypeRep proxy, dict))
+          & HashMap.fromList
+    atomicModifyIORef' valueRegistry \vr -> (HashMap.union values vr, ())
+  ||]
+
+lookupValue :: SomeTypeRep -> Maybe (SomeDict Value)
+lookupValue t = unsafePerformIO do
+  vr <- readIORef valueRegistry
+  pure $ HashMap.lookup t vr
+{-# NOINLINE lookupValue #-}
