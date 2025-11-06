@@ -1,9 +1,7 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 module Be.Trace
-  ( Key
-  , Value
-  , Trace (..)
+  ( Trace (..)
   , dbMigrate
   , fetchTraces
   , insertTrace
@@ -11,16 +9,13 @@ module Be.Trace
 where
 
 import Be.Hash (Hash (..), hash)
+import Be.Value (Value)
 import Codec.Serialise (Serialise, deserialise, serialise)
 import Control.Exception (assert, onException)
 import Data.Map.Strict qualified as Map
 import Data.String.Interpolate (iii)
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (trace, traceId)
-
-type Key a = (Ord a, Serialise a)
-
-type Value a = (Ord a, Serialise a)
 
 data Trace k v = Trace
   { key :: k
@@ -75,7 +70,7 @@ dbMigrate connection = SQLite.withTransaction connection do
   |]
 
 fetchTraces
-  :: (Key k, Value v)
+  :: (Value k, Value v)
   => SQLite.Connection -> Maybe k -> IO [Trace k v]
 fetchTraces connection mKey = do
   traceRows :: [(Int64, LByteString, LByteString, LByteString)] <-
@@ -125,7 +120,7 @@ fetchTraces connection mKey = do
 
     pure trace
 
-insertTrace :: (Key k, Value v) => SQLite.Connection -> Trace k v -> IO Int64
+insertTrace :: (Value k, Value v) => SQLite.Connection -> Trace k v -> IO Int64
 insertTrace connection trace =
   flip onException (SQLite.execute_ connection "rollback") do
     SQLite.execute_ connection "begin"

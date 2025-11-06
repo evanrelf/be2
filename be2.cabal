@@ -61,6 +61,7 @@ library
     , Be.Hash
     , Be.Lint
     , Be.Trace
+    , Be.Value
 
 executable be2
   import:
