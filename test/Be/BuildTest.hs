@@ -28,7 +28,7 @@ readFile taskContext path = do
   value <- taskContextRealize taskContext key
   case value of
     Value_ReadFile bytes -> pure bytes
-    _ -> error "unreachable"
+    _ -> error $ "unexpected: " <> show value
 
 taskReadFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 taskReadFile _taskContext path = do
@@ -48,7 +48,7 @@ concat taskContext path = do
   value <- taskContextRealize taskContext key
   case value of
     Value_Concat bytes -> pure bytes
-    _ -> error "unreachable"
+    _ -> error $ "unexpected: " <> show value
 
 taskConcat :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 taskConcat taskContext path = do
@@ -69,7 +69,7 @@ unit_build_system = do
     let tasks taskContext = \case
           Key_ReadFile path -> do
             bytes <- taskReadFile taskContext path
-            let value = Value_Concat bytes
+            let value = Value_ReadFile bytes
             let volatile = True
             pure (value, volatile)
 
