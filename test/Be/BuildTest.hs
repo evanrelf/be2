@@ -62,8 +62,6 @@ taskConcat taskContext path = do
 
 unit_build_system :: Assertion
 unit_build_system = do
-  $$registerValues
-
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
 

@@ -18,7 +18,7 @@ import Language.Haskell.TH qualified as TH
 import System.IO.Unsafe (unsafePerformIO)
 import Type.Reflection (SomeTypeRep, TypeRep, eqTypeRep, someTypeRep, typeRep, (:~~:) (..))
 
-class (Typeable a, Show a, Serialise a, Hashable a) => Value a where
+class (Typeable a, Show a, Serialise a, Hashable a) => Value a
 
 valueRegistry :: IORef (HashMap SomeTypeRep (SomeDict Value))
 valueRegistry = unsafePerformIO $ newIORef HashMap.empty
@@ -60,10 +60,8 @@ instance Serialise SomeValue where
     decodeListLenOf 2
     t <- decode
     case lookupValue t of
-      Just (SomeDictOf (Proxy @a)) ->
-        SomeValue (typeRep @a) <$> decode @a
-      Nothing ->
-        fail "fuck"
+      Just (SomeDictOf (Proxy @a)) -> SomeValue (typeRep @a) <$> decode @a
+      Nothing -> fail $ "Type `" <> show t <> "` missing from value registry"
 
 instance Value SomeValue
 
