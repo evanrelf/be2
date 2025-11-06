@@ -45,11 +45,15 @@ library
   hs-source-dirs: src
   build-depends:
     , ChibiHash
+    , discover-instances
+    , optics-core
     , optparse-applicative
     , serialise
     , sqlite-simple
     , string-interpolate
+    , template-haskell
     , unliftio
+    , varargs
   exposed-modules:
     , Be
     , Be.Build
