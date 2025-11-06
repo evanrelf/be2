@@ -7,6 +7,7 @@ module Be.Value
   , SomeValue (..)
   , toSomeValue
   , fromSomeValue
+  , fromSomeValue'
   )
 where
 
@@ -53,6 +54,17 @@ fromSomeValue @a (SomeValue t x) =
   case eqTypeRep t (typeRep @a) of
     Just HRefl -> Just x
     Nothing -> Nothing
+
+fromSomeValue' :: Value a => SomeValue -> a
+fromSomeValue' @a x@(SomeValue t _) =
+  fromMaybe (error message) (fromSomeValue x)
+  where
+  message =
+    unwords
+      [ "fromSomeValue':"
+      , "Expected `" <> show (typeRep @a) <> "`,"
+      , "got `" <> show t <> "`"
+      ]
 
 valueRegistry :: IORef (HashMap SomeTypeRep (SomeDict Value))
 valueRegistry = unsafePerformIO $ newIORef HashMap.empty
