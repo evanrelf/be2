@@ -3,7 +3,7 @@ module Be.BuildTest where
 import Be.Build
 import Be.Hash (Hash (..))
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
-import Be.Value (Value)
+import Be.Value (SomeValue, Value, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.Map.Strict qualified as Map
 import Database.SQLite.Simple qualified as SQLite
@@ -66,7 +66,8 @@ unit_build_system = do
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
-    let tasks taskContext = \case
+    let tasks :: TaskContext TestKey TestValue -> TestKey -> IO (TestValue, Bool)
+        tasks taskContext = \case
           Key_ReadFile path -> do
             bytes <- taskReadFile taskContext path
             let value = Value_ReadFile bytes
@@ -79,7 +80,7 @@ unit_build_system = do
             let volatile = False
             pure (value, volatile)
 
-    state <- atomically $ newState @TestKey @TestValue connection tasks
+    state <- atomically $ newState connection tasks
 
     let path = "/files"
 
@@ -136,7 +137,7 @@ unit_build_system = do
     taskCount <- readTVarIO state.debugTaskCount
     assertEqual "task count" taskCount 4
 
-    state' <- atomically $ newState @TestKey @TestValue connection tasks
+    state' <- atomically $ newState connection tasks
 
     -- Second run should produce the same results...
 
@@ -162,3 +163,73 @@ unit_build_system = do
     assertEqual "task count 2" taskCount' 3
 
     pure ()
+
+data ExistsKey
+  = Key_Add1 Int
+  | Key_Greet Text
+  deriving stock (Generic, Show, Eq, Ord)
+  deriving anyclass (Serialise, Value)
+
+data ExistsValue
+  = Value_Add1 Int
+  | Value_Greet Text
+  deriving stock (Generic, Show, Eq, Ord)
+  deriving anyclass (Serialise, Value)
+
+add1 :: TaskContext SomeValue SomeValue -> Int -> IO Int
+add1 taskContext n = do
+  let key = Key_Add1 n
+  value <- taskContextRealize taskContext (toSomeValue key)
+  case fromSomeValue value of
+    Just (Value_Add1 m) -> pure m
+    _ -> error $ "unexpected: " <> show value
+
+taskAdd1 :: TaskContext SomeValue SomeValue -> Int -> IO Int
+taskAdd1 _taskContext n = pure (n + 1)
+
+greet :: TaskContext SomeValue SomeValue -> Text -> IO Text
+greet taskContext name = do
+  let key = Key_Greet name
+  value <- taskContextRealize taskContext (toSomeValue key)
+  case fromSomeValue value of
+    Just (Value_Greet greeting) -> pure greeting
+    _ -> error $ "unexpected: " <> show value
+
+taskGreet :: TaskContext SomeValue SomeValue -> Text -> IO Text
+taskGreet _taskContext name = pure ("hello, " <> name <> "!")
+
+unit_existential_build_system :: Assertion
+unit_existential_build_system = do
+  SQLite.withConnection ":memory:" \connection -> do
+    dbMigrate connection
+
+    let tasks :: TaskContext SomeValue SomeValue -> SomeValue -> IO (SomeValue, Bool)
+        tasks taskContext someValue =
+          case fromSomeValue someValue of
+            Just (Key_Add1 n) -> do
+              m <- taskAdd1 taskContext n
+              let value = toSomeValue (Value_Add1 m)
+              let volatile = False
+              pure (value, volatile)
+
+            Just (Key_Greet name) -> do
+              greeting <- taskGreet taskContext name
+              let value = toSomeValue (Value_Greet greeting)
+              let volatile = False
+              pure (value, volatile)
+
+            Nothing -> error $ "unexpected: " <> show someValue
+
+    state <- atomically $ newState connection tasks
+    actualResult <- stateRealize state (toSomeValue (Key_Add1 1))
+    let expectedResult = toSomeValue (Value_Add1 2)
+    assertEqual "result 1" expectedResult actualResult
+    taskCount <- readTVarIO state.debugTaskCount
+    assertEqual "task count 1" taskCount 1
+
+    state' <- atomically $ newState connection tasks
+    actualResult <- stateRealize state (toSomeValue (Key_Add1 1))
+    let expectedResult = toSomeValue (Value_Add1 2)
+    assertEqual "result 2" expectedResult actualResult
+    taskCount' <- readTVarIO state'.debugTaskCount
+    assertEqual "task count 2" taskCount' 0
