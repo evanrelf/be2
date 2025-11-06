@@ -34,9 +34,7 @@ instance Ord SomeValue where
 
 instance Serialise SomeValue where
   encode (SomeValue t x) = encode (t, x)
-  decode = do
-    -- TODO
-    pure undefined
+  decode = undefined -- HARD PROBLEM
 
 instance Value SomeValue
 
