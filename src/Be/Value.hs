@@ -12,6 +12,7 @@ where
 import Codec.Serialise (Serialise (..))
 import Type.Reflection (SomeTypeRep (..), TypeRep, eqTypeRep, typeRep, (:~~:) (..))
 
+-- TODO: Consider using `HashMap` to avoid weird `Ord` instance on `SomeValue`
 class (Typeable a, Show a, Serialise a, Ord a) => Value a
 
 data SomeValue where
@@ -23,7 +24,7 @@ instance Eq SomeValue where
   SomeValue t1 x1 == SomeValue t2 x2 =
     case eqTypeRep t1 t2 of
       Just HRefl -> x1 == x2
-      Nothing -> SomeTypeRep t1 == SomeTypeRep t2
+      Nothing -> False
 
 instance Ord SomeValue where
   compare (SomeValue t1 x1) (SomeValue t2 x2) =
