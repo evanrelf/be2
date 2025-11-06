@@ -10,22 +10,24 @@ import Prelude hiding (concat, readFile, state)
 import Test.Tasty.HUnit
 
 data TestKey
-  = ReadFile FilePath
-  | Concat FilePath
+  = Key_ReadFile FilePath
+  | Key_Concat FilePath
   deriving stock (Generic, Show, Eq, Ord)
   deriving anyclass (Serialise)
 
 data TestValue
-  = Bytes ByteString
+  = Value_ReadFile ByteString
+  | Value_Concat ByteString
   deriving stock (Generic, Show, Eq, Ord)
   deriving anyclass (Serialise)
 
 readFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 readFile taskContext path = do
-  let key = ReadFile path
+  let key = Key_ReadFile path
   value <- taskContextRealize taskContext key
-  let Bytes bytes = value
-  pure bytes
+  case value of
+    Value_ReadFile bytes -> pure bytes
+    _ -> error "unreachable"
 
 taskReadFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 taskReadFile _taskContext path = do
@@ -41,10 +43,11 @@ taskReadFile _taskContext path = do
 
 concat :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 concat taskContext path = do
-  let key = Concat path
+  let key = Key_Concat path
   value <- taskContextRealize taskContext key
-  let Bytes bytes = value
-  pure bytes
+  case value of
+    Value_Concat bytes -> pure bytes
+    _ -> error "unreachable"
 
 taskConcat :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 taskConcat taskContext path = do
@@ -63,15 +66,15 @@ unit_build_system = do
     dbMigrate connection
 
     let tasks taskContext = \case
-          ReadFile path -> do
+          Key_ReadFile path -> do
             bytes <- taskReadFile taskContext path
-            let value = Bytes bytes
+            let value = Value_Concat bytes
             let volatile = True
             pure (value, volatile)
 
-          Concat path -> do
+          Key_Concat path -> do
             bytes <- taskConcat taskContext path
-            let value = Bytes bytes
+            let value = Value_Concat bytes
             let volatile = False
             pure (value, volatile)
 
@@ -79,22 +82,22 @@ unit_build_system = do
 
     let path = "/files"
 
-    actualResult <- stateRealize state (Concat path)
-    let expectedResult = Bytes (toBytes "AAAA\nAAAA\nBBBB\n")
+    actualResult <- stateRealize state (Key_Concat path)
+    let expectedResult = Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
     assertEqual "result" expectedResult actualResult
 
     let expectedStore = Map.fromList
-          [ ( ReadFile "/files"
-            , Bytes (toBytes "/files/a\n/files/a\n/files/b\n")
+          [ ( Key_ReadFile "/files"
+            , Value_ReadFile (toBytes "/files/a\n/files/a\n/files/b\n")
             )
-          , ( ReadFile "/files/a"
-            , Bytes (toBytes "AAAA\n")
+          , ( Key_ReadFile "/files/a"
+            , Value_ReadFile (toBytes "AAAA\n")
             )
-          , ( ReadFile "/files/b"
-            , Bytes (toBytes "BBBB\n")
+          , ( Key_ReadFile "/files/b"
+            , Value_ReadFile (toBytes "BBBB\n")
             )
-          , ( Concat "/files"
-            , Bytes (toBytes "AAAA\nAAAA\nBBBB\n")
+          , ( Key_Concat "/files"
+            , Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
             )
           ]
     actualStore <- readTVarIO state.store
@@ -110,19 +113,19 @@ unit_build_system = do
 
     let expectedTraces =
           [ Trace
-              { key = Concat "/files"
+              { key = Key_Concat "/files"
               , deps = Map.fromList
-                  [ ( ReadFile "/files"
+                  [ ( Key_ReadFile "/files"
                     , Hash 217649648357837811
                     )
-                  , ( ReadFile "/files/a"
+                  , ( Key_ReadFile "/files/a"
                     , Hash 7664945061632064206
                     )
-                  , ( ReadFile "/files/b"
+                  , ( Key_ReadFile "/files/b"
                     , Hash 2092587128809980294
                     )
                   ]
-              , value = Bytes (toBytes "AAAA\nAAAA\nBBBB\n")
+              , value = Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
               }
           ]
     actualTraces :: [Trace TestKey TestValue] <- fetchTraces connection Nothing
@@ -136,7 +139,7 @@ unit_build_system = do
 
     -- Second run should produce the same results...
 
-    actualResult' <- stateRealize state' (Concat path)
+    actualResult' <- stateRealize state' (Key_Concat path)
     assertEqual "result 2" expectedResult actualResult'
 
     actualStore' <- readTVarIO state'.store
