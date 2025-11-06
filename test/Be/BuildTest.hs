@@ -13,13 +13,13 @@ import Test.Tasty.HUnit
 data TestKey
   = Key_ReadFile FilePath
   | Key_Concat FilePath
-  deriving stock (Generic, Show, Eq, Ord)
+  deriving stock (Generic, Show, Eq)
   deriving anyclass (Serialise, Hashable, Value)
 
 data TestValue
   = Value_ReadFile ByteString
   | Value_Concat ByteString
-  deriving stock (Generic, Show, Eq, Ord)
+  deriving stock (Generic, Show, Eq)
   deriving anyclass (Serialise, Hashable, Value)
 
 readFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
@@ -167,13 +167,13 @@ unit_build_system = do
 data ExistsKey
   = Key_Add1 Int
   | Key_Greet Text
-  deriving stock (Generic, Show, Eq, Ord)
+  deriving stock (Generic, Show, Eq)
   deriving anyclass (Serialise, Hashable, Value)
 
 data ExistsValue
   = Value_Add1 Int
   | Value_Greet Text
-  deriving stock (Generic, Show, Eq, Ord)
+  deriving stock (Generic, Show, Eq)
   deriving anyclass (Serialise, Hashable, Value)
 
 add1 :: TaskContext SomeValue SomeValue -> Int -> IO Int

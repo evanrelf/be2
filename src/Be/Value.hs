@@ -10,10 +10,9 @@ module Be.Value
 where
 
 import Codec.Serialise (Serialise (..))
-import Type.Reflection (SomeTypeRep (..), TypeRep, eqTypeRep, typeRep, (:~~:) (..))
+import Type.Reflection (TypeRep, eqTypeRep, typeRep, (:~~:) (..))
 
--- TODO: Consider using `HashMap` to avoid weird `Ord` instance on `SomeValue`
-class (Typeable a, Show a, Serialise a, Ord a, Hashable a) => Value a
+class (Typeable a, Show a, Serialise a, Hashable a) => Value a
 
 data SomeValue where
   SomeValue :: Value a => TypeRep a -> a -> SomeValue
@@ -25,12 +24,6 @@ instance Eq SomeValue where
     case eqTypeRep t1 t2 of
       Just HRefl -> x1 == x2
       Nothing -> False
-
-instance Ord SomeValue where
-  compare (SomeValue t1 x1) (SomeValue t2 x2) =
-    case eqTypeRep t1 t2 of
-      Just HRefl -> compare x1 x2
-      Nothing -> compare (SomeTypeRep t1) (SomeTypeRep t2)
 
 instance Hashable SomeValue where
   hashWithSalt salt (SomeValue t x) = hashWithSalt salt (t, x)

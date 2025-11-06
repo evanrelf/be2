@@ -22,7 +22,7 @@ data Trace k v = Trace
   , deps :: HashMap k Hash
   , value :: v
   }
-  deriving stock (Generic, Eq, Ord, Show)
+  deriving stock (Generic, Eq, Show)
   deriving anyclass (Serialise)
 
 dbMigrate :: SQLite.Connection -> IO ()
