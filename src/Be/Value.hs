@@ -12,10 +12,12 @@ where
 import Codec.Serialise (Serialise (..))
 import Type.Reflection (SomeTypeRep (..), TypeRep, eqTypeRep, typeRep, (:~~:) (..))
 
-class (Typeable a, Serialise a, Ord a) => Value a
+class (Typeable a, Show a, Serialise a, Ord a) => Value a
 
 data SomeValue where
   SomeValue :: Value a => TypeRep a -> a -> SomeValue
+
+deriving stock instance Show SomeValue
 
 instance Eq SomeValue where
   SomeValue t1 x1 == SomeValue t2 x2 =
