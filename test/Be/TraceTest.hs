@@ -5,7 +5,7 @@ module Be.TraceTest where
 import Be.Hash (Hash (..))
 import Be.Trace
 import Be.Value (Value)
-import Data.Map.Strict qualified as Map
+import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (trace)
 import Test.Tasty.HUnit
@@ -18,7 +18,7 @@ unit_trace_roundtrip =
     dbMigrate connection
 
     let key = "password"
-    let deps = Map.singleton "answer" (Hash 42)
+    let deps = HashMap.singleton "answer" (Hash 42)
     let value = "hunter2"
     let trace :: Trace Text Text
         trace = Trace{ key, deps, value }

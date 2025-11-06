@@ -14,7 +14,7 @@ import Be.Hash (Hash, hash)
 import Be.Trace (Trace (..), fetchTraces, insertTrace)
 import Be.Value (Value)
 import Control.Exception (assert)
-import Data.Map.Strict qualified as Map
+import Data.HashMap.Strict qualified as HashMap
 import Data.Set qualified as Set
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (State, state, trace)
@@ -24,8 +24,8 @@ import UnliftIO.Async (forConcurrently_, race_)
 data State k v = State
   { tasks :: TaskContext k v -> k -> IO (v, Bool)
   , connection :: SQLite.Connection
-  , done :: TVar (Map k (TMVar ()))
-  , store :: TVar (Map k v)
+  , done :: TVar (HashMap k (TMVar ()))
+  , store :: TVar (HashMap k v)
   , debugTaskCount :: TVar Int
   }
 
@@ -34,8 +34,8 @@ newState
   -> (TaskContext k v -> k -> IO (v, Bool))
   -> STM (State k v)
 newState connection tasks = do
-  done <- newTVar Map.empty
-  store <- newTVar Map.empty
+  done <- newTVar HashMap.empty
+  store <- newTVar HashMap.empty
   debugTaskCount <- newTVar 0
   pure State{ tasks, connection, done, store, debugTaskCount }
 
@@ -43,11 +43,11 @@ stateRealize :: (Value k, Value v) => State k v -> k -> IO v
 stateRealize state key = do
   eBarrier <- atomically do
     done <- readTVar state.done
-    case Map.lookup key done of
+    case HashMap.lookup key done of
       Just barrier -> pure (Right barrier)
       Nothing -> do
         barrier <- newEmptyTMVar
-        modifyTVar' state.done (Map.insert key barrier)
+        modifyTVar' state.done (HashMap.insert key barrier)
         pure (Left barrier)
 
   case eBarrier of
@@ -56,7 +56,7 @@ stateRealize state key = do
       store <- readTVar state.store
       -- SAFETY: The key is marked as done, so it has already been built, and
       -- its value is present in the store.
-      let value = fromMaybe (error "unreachable") (Map.lookup key store)
+      let value = fromMaybe (error "unreachable") (HashMap.lookup key store)
       pure value
 
     Left barrier -> do
@@ -67,7 +67,7 @@ stateRealize state key = do
             atomically $ modifyTVar' state.debugTaskCount (+ 1)
             stateBuild state key
       atomically do
-        modifyTVar' state.store (Map.insert key value)
+        modifyTVar' state.store (HashMap.insert key value)
         -- SAFETY: The key has not been marked as done yet, and no other tasks
         -- will attempt to.
         putTMVar barrier ()
@@ -81,13 +81,14 @@ stateFetch state key = do
     Set.fromList . map (.value) <$> do
       traces & filterM \trace -> do
         assert (hash trace.key == hash key) $ pure ()
-        Map.assocs trace.deps & allConcurrently \(depKey, depValueHash) -> do
+        HashMap.toList trace.deps & allConcurrently \(depKey, depValueHash) -> do
           depValue <- stateRealize state depKey
           pure (depValueHash == hash depValue)
 
   store <- readTVarIO state.store
 
-  if| Just storeValue <- Map.lookup key store, Set.member storeValue matches ->
+  if| Just storeValue <- HashMap.lookup key store
+    , Set.member storeValue matches ->
         pure (Just storeValue)
     | Just cachedValue <- Set.lookupMin matches ->
         pure (Just cachedValue)
@@ -106,18 +107,18 @@ stateBuild state key = do
 
 data TaskContext k v = TaskContext
   { state :: State k v
-  , deps :: TVar (Map k Hash)
+  , deps :: TVar (HashMap k Hash)
   }
 
 newTaskContext :: State k v -> STM (TaskContext k v)
 newTaskContext state = do
-  deps <- newTVar Map.empty
+  deps <- newTVar HashMap.empty
   pure TaskContext{ state, deps }
 
 taskContextRealize :: (Value k, Value v) => TaskContext k v -> k -> IO v
 taskContextRealize taskContext key = do
   value <- stateRealize taskContext.state key
-  atomically $ modifyTVar' taskContext.deps $ Map.insert key (hash value)
+  atomically $ modifyTVar' taskContext.deps $ HashMap.insert key (hash value)
   pure value
 
 allConcurrently

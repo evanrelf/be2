@@ -5,7 +5,7 @@ import Be.Hash (Hash (..))
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
 import Be.Value (SomeValue, Value, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
-import Data.Map.Strict qualified as Map
+import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (concat, readFile, state)
 import Test.Tasty.HUnit
@@ -88,7 +88,7 @@ unit_build_system = do
     let expectedResult = Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
     assertEqual "result" expectedResult actualResult
 
-    let expectedStore = Map.fromList
+    let expectedStore = HashMap.fromList
           [ ( Key_ReadFile "/files"
             , Value_ReadFile (toBytes "/files/a\n/files/a\n/files/b\n")
             )
@@ -116,7 +116,7 @@ unit_build_system = do
     let expectedTraces =
           [ Trace
               { key = Key_Concat "/files"
-              , deps = Map.fromList
+              , deps = HashMap.fromList
                   [ ( Key_ReadFile "/files"
                     , Hash 217649648357837811
                     )

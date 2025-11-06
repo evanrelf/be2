@@ -12,14 +12,14 @@ import Be.Hash (Hash (..), hash)
 import Be.Value (Value)
 import Codec.Serialise (Serialise, deserialise, serialise)
 import Control.Exception (assert, onException)
-import Data.Map.Strict qualified as Map
+import Data.HashMap.Strict qualified as HashMap
 import Data.String.Interpolate (iii)
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (trace, traceId)
 
 data Trace k v = Trace
   { key :: k
-  , deps :: Map k Hash
+  , deps :: HashMap k Hash
   , value :: v
   }
   deriving stock (Generic, Eq, Ord, Show)
@@ -112,7 +112,7 @@ fetchTraces connection mKey = do
 
     let trace = Trace
           { key = traceKey
-          , deps = Map.fromList deps
+          , deps = HashMap.fromList deps
           , value = traceValue
           }
 
@@ -152,7 +152,7 @@ insertTrace connection trace =
       pure traceId
 
     else do
-      for_ (Map.assocs trace.deps) \(depKey, depValueHash) -> do
+      for_ (HashMap.toList trace.deps) \(depKey, depValueHash) -> do
         let depKeyBytes = serialise depKey
         let depValueHashBytes = serialise depValueHash
 
