@@ -196,7 +196,7 @@ greet taskContext name = do
     _ -> error $ "unexpected: " <> show value
 
 taskGreet :: TaskContext SomeValue SomeValue -> Text -> IO Text
-taskGreet _taskContext name = pure ("hello, " <> name <> "!")
+taskGreet _taskContext name = pure ("Hello, " <> name <> "!")
 
 unit_existential_build_system :: Assertion
 unit_existential_build_system = do
@@ -220,16 +220,28 @@ unit_existential_build_system = do
 
             Nothing -> error $ "unexpected: " <> show someValue
 
-    state <- atomically $ newState connection tasks
-    actualResult <- stateRealize state (toSomeValue (Key_Add1 1))
-    let expectedResult = toSomeValue (Value_Add1 2)
-    assertEqual "result 1" expectedResult actualResult
-    taskCount <- readTVarIO state.debugTaskCount
-    assertEqual "task count 1" taskCount 1
+    do
+      state <- atomically $ newState connection tasks
+      do
+        actualResult <- stateRealize state (toSomeValue (Key_Add1 1))
+        let expectedResult = toSomeValue (Value_Add1 2)
+        assertEqual "result 1" expectedResult actualResult
+      do
+        actualResult <- stateRealize state (toSomeValue (Key_Greet "Evan"))
+        let expectedResult = toSomeValue (Value_Greet "Hello, Evan!")
+        assertEqual "result 1" expectedResult actualResult
+      taskCount <- readTVarIO state.debugTaskCount
+      assertEqual "task count 1" taskCount 2
 
-    state' <- atomically $ newState connection tasks
-    actualResult <- stateRealize state (toSomeValue (Key_Add1 1))
-    let expectedResult = toSomeValue (Value_Add1 2)
-    assertEqual "result 2" expectedResult actualResult
-    taskCount' <- readTVarIO state'.debugTaskCount
-    assertEqual "task count 2" taskCount' 0
+    do
+      state <- atomically $ newState connection tasks
+      do
+        actualResult <- stateRealize state (toSomeValue (Key_Add1 1))
+        let expectedResult = toSomeValue (Value_Add1 2)
+        assertEqual "result 1" expectedResult actualResult
+      do
+        actualResult <- stateRealize state (toSomeValue (Key_Greet "Evan"))
+        let expectedResult = toSomeValue (Value_Greet "Hello, Evan!")
+        assertEqual "result 1" expectedResult actualResult
+      taskCount <- readTVarIO state.debugTaskCount
+      assertEqual "task count 2" taskCount 0
