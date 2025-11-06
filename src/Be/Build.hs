@@ -72,9 +72,9 @@ stateRealize state key = do
         putTMVar barrier ()
       pure value
 
-stateFetch :: forall k v. (Value k, Value v) => State k v -> k -> IO (Maybe v)
+stateFetch :: (Value k, Value v) => State k v -> k -> IO (Maybe v)
 stateFetch state key = do
-  traces :: [Trace k v] <- fetchTraces state.connection (Just key)
+  traces <- fetchTraces state.connection (Just key)
 
   matches :: HashSet v <-
     HashSet.fromList . map (.value) <$> do
@@ -94,7 +94,7 @@ stateFetch state key = do
     | otherwise ->
         pure Nothing
 
-stateBuild :: forall k v. (Value k, Value v) => State k v -> k -> IO v
+stateBuild :: (Value k, Value v) => State k v -> k -> IO v
 stateBuild state key = do
   taskContext <- atomically $ newTaskContext state
   (value, volatile) <- state.tasks taskContext key
