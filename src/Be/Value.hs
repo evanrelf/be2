@@ -1,5 +1,4 @@
 {-# LANGUAGE TypeAbstractions #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 module Be.Value
   ( Value
