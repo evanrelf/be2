@@ -15,21 +15,21 @@ import Be.Trace (Key, Trace (..), Value, fetchTraces, insertTrace)
 import Control.Exception (assert)
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
-import Database.SQLite.Simple qualified as Sqlite
+import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (State, state, trace)
 import UnliftIO (MonadUnliftIO)
 import UnliftIO.Async (forConcurrently_, race_)
 
 data State k v = State
   { tasks :: TaskContext k v -> k -> IO (v, Bool)
-  , connection :: Sqlite.Connection
+  , connection :: SQLite.Connection
   , done :: TVar (Map k (TMVar ()))
   , store :: TVar (Map k v)
   , debugTaskCount :: TVar Int
   }
 
 newState
-  :: Sqlite.Connection
+  :: SQLite.Connection
   -> (TaskContext k v -> k -> IO (v, Bool))
   -> STM (State k v)
 newState connection tasks = do

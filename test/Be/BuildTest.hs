@@ -5,7 +5,7 @@ import Be.Hash (Hash (..))
 import Be.Trace
 import Codec.Serialise (Serialise)
 import Data.Map.Strict qualified as Map
-import Database.SQLite.Simple qualified as Sqlite
+import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (concat, readFile, state)
 import Test.Tasty.HUnit
 
@@ -59,7 +59,7 @@ unit_build_system = do
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
 
-  Sqlite.withConnection ":memory:" \connection -> do
+  SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
     let tasks taskContext = \case

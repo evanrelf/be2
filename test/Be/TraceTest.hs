@@ -3,13 +3,13 @@ module Be.TraceTest where
 import Be.Hash (Hash (..))
 import Be.Trace
 import Data.Map.Strict qualified as Map
-import Database.SQLite.Simple qualified as Sqlite
+import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (trace)
 import Test.Tasty.HUnit
 
 unit_trace_roundtrip :: Assertion
 unit_trace_roundtrip =
-  Sqlite.withConnection ":memory:" \connection -> do
+  SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
     let key = "password"
