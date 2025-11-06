@@ -3,7 +3,7 @@ module Be.BuildTest where
 import Be.Build
 import Be.Hash (Hash (..))
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
-import Be.Value (Value)
+import Be.Value (SomeValue (..), Value, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.Map.Strict qualified as Map
 import Database.SQLite.Simple qualified as SQLite
@@ -22,15 +22,15 @@ data TestValue
   deriving stock (Generic, Show, Eq, Ord)
   deriving anyclass (Serialise, Value)
 
-readFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
+readFile :: TaskContext SomeValue SomeValue -> FilePath -> IO ByteString
 readFile taskContext path = do
   let key = Key_ReadFile path
-  value <- taskContextRealize taskContext key
-  case value of
-    Value_ReadFile bytes -> pure bytes
-    _ -> error "unreachable"
+  value <- taskContextRealize taskContext (toSomeValue key)
+  case fromSomeValue value of
+    Just (Value_ReadFile bytes) -> pure bytes
+    _ -> error $ "unexpected: " <> show value
 
-taskReadFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
+taskReadFile :: TaskContext SomeValue SomeValue -> FilePath -> IO ByteString
 taskReadFile _taskContext path = do
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
@@ -42,15 +42,15 @@ taskReadFile _taskContext path = do
         _ -> error $ "Failed to read file at '" <> toText path <> "'"
   pure bytes
 
-concat :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
+concat :: TaskContext SomeValue SomeValue -> FilePath -> IO ByteString
 concat taskContext path = do
   let key = Key_Concat path
-  value <- taskContextRealize taskContext key
-  case value of
-    Value_Concat bytes -> pure bytes
-    _ -> error "unreachable"
+  value <- taskContextRealize taskContext (toSomeValue key)
+  case fromSomeValue value of
+    Just (Value_Concat bytes) -> pure bytes
+    _ -> error $ "unexpected: " <> show value
 
-taskConcat :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
+taskConcat :: TaskContext SomeValue SomeValue -> FilePath -> IO ByteString
 taskConcat taskContext path = do
   bytes <- readFile taskContext path
   let text = decodeUtf8 bytes
@@ -66,39 +66,44 @@ unit_build_system = do
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
-    let tasks taskContext = \case
-          Key_ReadFile path -> do
-            bytes <- taskReadFile taskContext path
-            let value = Value_Concat bytes
-            let volatile = True
-            pure (value, volatile)
+    let tasks :: TaskContext SomeValue SomeValue -> SomeValue -> IO (SomeValue, Bool)
+        tasks taskContext someValue =
+          case fromSomeValue someValue of
+            Just (Key_ReadFile path) -> do
+              bytes <- taskReadFile taskContext path
+              let value = Value_ReadFile bytes
+              let volatile = True
+              pure (toSomeValue value, volatile)
 
-          Key_Concat path -> do
-            bytes <- taskConcat taskContext path
-            let value = Value_Concat bytes
-            let volatile = False
-            pure (value, volatile)
+            Just (Key_Concat path) -> do
+              bytes <- taskConcat taskContext path
+              let value = Value_Concat bytes
+              let volatile = False
+              pure (toSomeValue value, volatile)
 
-    state <- atomically $ newState @TestKey @TestValue connection tasks
+            Nothing ->
+              error $ "unexpected: " <> show someValue
+
+    state <- atomically $ newState connection tasks
 
     let path = "/files"
 
-    actualResult <- stateRealize state (Key_Concat path)
-    let expectedResult = Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
+    actualResult <- stateRealize state (toSomeValue (Key_Concat path))
+    let expectedResult = toSomeValue (Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n"))
     assertEqual "result" expectedResult actualResult
 
     let expectedStore = Map.fromList
-          [ ( Key_ReadFile "/files"
-            , Value_ReadFile (toBytes "/files/a\n/files/a\n/files/b\n")
+          [ ( toSomeValue (Key_ReadFile "/files")
+            , toSomeValue (Value_ReadFile (toBytes "/files/a\n/files/a\n/files/b\n"))
             )
-          , ( Key_ReadFile "/files/a"
-            , Value_ReadFile (toBytes "AAAA\n")
+          , ( toSomeValue (Key_ReadFile "/files/a")
+            , toSomeValue (Value_ReadFile (toBytes "AAAA\n"))
             )
-          , ( Key_ReadFile "/files/b"
-            , Value_ReadFile (toBytes "BBBB\n")
+          , ( toSomeValue (Key_ReadFile "/files/b")
+            , toSomeValue (Value_ReadFile (toBytes "BBBB\n"))
             )
-          , ( Key_Concat "/files"
-            , Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
+          , ( toSomeValue (Key_Concat "/files")
+            , toSomeValue (Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n"))
             )
           ]
     actualStore <- readTVarIO state.store
@@ -136,11 +141,11 @@ unit_build_system = do
     taskCount <- readTVarIO state.debugTaskCount
     assertEqual "task count" taskCount 4
 
-    state' <- atomically $ newState @TestKey @TestValue connection tasks
+    state' <- atomically $ newState connection tasks
 
     -- Second run should produce the same results...
 
-    actualResult' <- stateRealize state' (Key_Concat path)
+    actualResult' <- stateRealize state' (toSomeValue (Key_Concat path))
     assertEqual "result 2" expectedResult actualResult'
 
     actualStore' <- readTVarIO state'.store
