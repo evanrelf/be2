@@ -2,7 +2,8 @@ module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
-import Be.Trace
+import Be.Trace (Trace (..), dbMigrate, fetchTraces)
+import Be.Value (Value)
 import Codec.Serialise (Serialise)
 import Data.Map.Strict qualified as Map
 import Database.SQLite.Simple qualified as SQLite
@@ -13,13 +14,13 @@ data TestKey
   = Key_ReadFile FilePath
   | Key_Concat FilePath
   deriving stock (Generic, Show, Eq, Ord)
-  deriving anyclass (Serialise)
+  deriving anyclass (Serialise, Value)
 
 data TestValue
   = Value_ReadFile ByteString
   | Value_Concat ByteString
   deriving stock (Generic, Show, Eq, Ord)
-  deriving anyclass (Serialise)
+  deriving anyclass (Serialise, Value)
 
 readFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
 readFile taskContext path = do

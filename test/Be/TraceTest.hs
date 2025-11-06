@@ -1,11 +1,16 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module Be.TraceTest where
 
 import Be.Hash (Hash (..))
 import Be.Trace
+import Be.Value (Value)
 import Data.Map.Strict qualified as Map
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (trace)
 import Test.Tasty.HUnit
+
+instance Value Text
 
 unit_trace_roundtrip :: Assertion
 unit_trace_roundtrip =

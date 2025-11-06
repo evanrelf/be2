@@ -14,8 +14,6 @@ import Type.Reflection (SomeTypeRep (..), TypeRep, eqTypeRep, typeRep, (:~~:) (.
 
 class (Typeable a, Serialise a, Ord a) => Value a
 
-instance (Typeable a, Serialise a, Ord a) => Value a
-
 data SomeValue where
   SomeValue :: Value a => TypeRep a -> a -> SomeValue
 
@@ -34,6 +32,8 @@ instance Ord SomeValue where
 instance Serialise SomeValue where
   encode (SomeValue t x) = encode (t, x)
   decode = undefined -- HARD PROBLEM
+
+instance Value SomeValue
 
 toSomeValue :: Value a => a -> SomeValue
 toSomeValue x = SomeValue typeRep x
