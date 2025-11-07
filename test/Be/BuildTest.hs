@@ -5,7 +5,7 @@ module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
-import Be.Task (Task (..), TupleArgs, task)
+import Be.Task (Task (..), task)
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
 import Be.Value (SomeValue, Value, discoverValues, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
@@ -168,24 +168,10 @@ unit_build_system = do
 
     pure ()
 
-data ExistsKey_Add1 = ExistsKey_Add1 Int
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass (Serialise, Hashable, Value)
-
-data ExistsValue_Add1 = ExistsValue_Add1 Int
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass (Serialise, Hashable, Value)
-
 add1 :: TaskContext SomeValue SomeValue -> Int -> IO Int
-add1 taskContext n = do
-  let key = ExistsKey_Add1 n
-  value <- taskContextRealize taskContext (toSomeValue key)
-  case fromSomeValue value of
-    Just (ExistsValue_Add1 m) -> pure m
-    _ -> error $ "unexpected: " <> show value
+add1 _taskContext n = pure (n + 1)
 
-taskAdd1 :: TaskContext SomeValue SomeValue -> Int -> IO Int
-taskAdd1 _taskContext n = pure (n + 1)
+task 'add1
 
 greet :: TaskContext SomeValue SomeValue -> Text -> IO Text
 greet _taskContext name = pure ("Hello, " <> name <> "!")
@@ -201,9 +187,9 @@ unit_existential_build_system = do
 
     let tasks :: TaskContext SomeValue SomeValue -> SomeValue -> IO (SomeValue, Bool)
         tasks taskContext someValue
-          | Just (ExistsKey_Add1 n) <- fromSomeValue someValue = do
-              m <- taskAdd1 taskContext n
-              let value = toSomeValue (ExistsValue_Add1 m)
+          | Just (Add1Key (Identity n)) <- fromSomeValue someValue = do
+              m <- taskBuild (Proxy @Add1) taskContext n
+              let value = toSomeValue (Add1Value m)
               let volatile = False
               pure (value, volatile)
 
@@ -218,8 +204,8 @@ unit_existential_build_system = do
     do
       state <- atomically $ newState connection tasks
       do
-        actualResult <- stateRealize state (toSomeValue (ExistsKey_Add1 1))
-        let expectedResult = toSomeValue (ExistsValue_Add1 2)
+        actualResult <- stateRealize state (toSomeValue (Add1Key 1))
+        let expectedResult = toSomeValue (Add1Value 2)
         assertEqual "result 1" expectedResult actualResult
       do
         actualResult <- stateRealize state (toSomeValue (GreetKey "Evan"))
@@ -231,8 +217,8 @@ unit_existential_build_system = do
     do
       state <- atomically $ newState connection tasks
       do
-        actualResult <- stateRealize state (toSomeValue (ExistsKey_Add1 1))
-        let expectedResult = toSomeValue (ExistsValue_Add1 2)
+        actualResult <- stateRealize state (toSomeValue (Add1Key 1))
+        let expectedResult = toSomeValue (Add1Value 2)
         assertEqual "result 1" expectedResult actualResult
       do
         actualResult <- stateRealize state (toSomeValue (GreetKey "Evan"))
