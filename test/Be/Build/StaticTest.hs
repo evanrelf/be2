@@ -5,7 +5,7 @@ module Be.Build.StaticTest where
 
 import Be.Build.Static
 import Be.Hash (Hash (..))
-import Be.Trace (Trace (..), dbMigrate, fetchTraces)
+import Be.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
 import Be.Value (Value)
 import Codec.Serialise (Serialise)
 import Data.HashMap.Strict qualified as HashMap
@@ -61,8 +61,8 @@ taskConcat taskState path = do
   output <- foldMapM (readFile taskState) paths
   pure output
 
-unit_build_system :: Assertion
-unit_build_system = do
+unit_build_system_static :: Assertion
+unit_build_system_static = do
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
 
@@ -91,7 +91,7 @@ unit_build_system = do
     taskState <- atomically $ newTaskState buildState
     actualResult <- taskStateRealize taskState (Key_Concat path)
     let expectedResult = Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
-    assertEqual "result" expectedResult actualResult
+    assertEqual "result 1" expectedResult actualResult
 
     let expectedStore = HashMap.fromList
           [ ( Key_ReadFile "/files"
@@ -108,7 +108,7 @@ unit_build_system = do
             )
           ]
     actualStore <- readTVarIO buildState.store
-    assertEqual "store" expectedStore actualStore
+    assertEqual "store 1" expectedStore actualStore
 
     let expectedDone = fmap (const True) expectedStore
     actualDone <- do
@@ -116,7 +116,7 @@ unit_build_system = do
       forM done \tmvar -> do
         isEmpty <- atomically $ isEmptyTMVar tmvar
         pure (not isEmpty)
-    assertEqual "done" expectedDone actualDone
+    assertEqual "done 1" expectedDone actualDone
 
     let expectedTraces =
           [ Trace
@@ -136,11 +136,11 @@ unit_build_system = do
               }
           ]
     actualTraces :: [Trace TestKey TestValue] <- fetchTraces connection Nothing
-    assertEqual "traces" expectedTraces actualTraces
+    assertEqual "traces 1" expectedTraces actualTraces
 
     -- 3 `readFile`s, 1 `concat`
     taskCount <- readTVarIO buildState.debugTaskCount
-    assertEqual "task count" taskCount 4
+    assertEqual "task count 1" taskCount 4
 
     buildState' <- atomically $ newBuildState connection tasks
 

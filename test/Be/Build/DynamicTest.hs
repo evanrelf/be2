@@ -3,38 +3,17 @@
 
 module Be.Build.DynamicTest where
 
-import Be.Build.Static
+import Be.Build.Dynamic
 import Be.Hash (Hash (..))
-import Be.Trace (Trace (..), dbMigrate, fetchTraces)
-import Be.Value (Value, discoverValues)
-import Codec.Serialise (Serialise)
+import Be.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
+import Be.Value (SomeValue, Value, discoverValues, toSomeValue)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (concat, readFile)
 import Test.Tasty.HUnit
 
-data TestKey
-  = Key_ReadFile FilePath
-  | Key_Concat FilePath
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass (Serialise, Hashable, Value)
-
-data TestValue
-  = Value_ReadFile ByteString
-  | Value_Concat ByteString
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass (Serialise, Hashable, Value)
-
-readFile :: TaskState TestKey TestValue -> FilePath -> IO ByteString
-readFile taskState path = do
-  let key = Key_ReadFile path
-  value <- taskStateRealize taskState key
-  case value of
-    Value_ReadFile bytes -> pure bytes
-    _ -> error $ "unexpected: " <> show value
-
-taskReadFile :: TaskState TestKey TestValue -> FilePath -> IO ByteString
-taskReadFile _taskState path = do
+readFile :: TaskState' -> FilePath -> IO ByteString
+readFile _taskState path = do
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
   let bytes = case path of
@@ -45,70 +24,57 @@ taskReadFile _taskState path = do
         _ -> error $ "Failed to read file at '" <> toText path <> "'"
   pure bytes
 
-concat :: TaskState TestKey TestValue -> FilePath -> IO ByteString
-concat taskState path = do
-  let key = Key_Concat path
-  value <- taskStateRealize taskState key
-  case value of
-    Value_Concat bytes -> pure bytes
-    _ -> error $ "unexpected: " <> show value
+registerTaskWith 'readFile defaultTaskOptions{ volatile = True }
 
-taskConcat :: TaskState TestKey TestValue -> FilePath -> IO ByteString
-taskConcat taskState path = do
-  bytes <- readFile taskState path
+concat :: TaskState' -> FilePath -> IO ByteString
+concat taskState path = do
+  bytes <- realize ReadFile taskState path
   let text = decodeUtf8 bytes
   let paths = map toString (lines text)
-  output <- foldMapM (readFile taskState) paths
+  output <- foldMapM (realize ReadFile taskState) paths
   pure output
 
-unit_build_system :: Assertion
-unit_build_system = do
+registerTask 'concat
+
+unit_build_system_dynamic :: Assertion
+unit_build_system_dynamic = do
+  $$discoverValues
+  $$discoverTasks
+
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
 
   SQLite.withConnection ":memory:" \connection -> do
-
-    let tasks :: TaskState TestKey TestValue -> TestKey -> IO (TestValue, Bool)
-        tasks taskState = \case
-          Key_ReadFile path -> do
-            bytes <- taskReadFile taskState path
-            let value = Value_ReadFile bytes
-            let volatile = True
-            pure (value, volatile)
-
-          Key_Concat path -> do
-            bytes <- taskConcat taskState path
-            let value = Value_Concat bytes
-            let volatile = False
-            pure (value, volatile)
-
-    buildState <- atomically $ newBuildState connection tasks
     dbDrop connection
     dbCreate connection
 
+    tasks <- getTasks
+
+    buildState <- atomically $ newBuildState' connection tasks
+
     let path = "/files"
 
-    taskState <- atomically $ newTaskState buildState
-    actualResult <- taskStateRealize taskState (Key_Concat path)
-    let expectedResult = Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
-    assertEqual "result" expectedResult actualResult
+    taskState <- atomically $ newTaskState' buildState
+    actualResult <- realize Concat taskState path
+    let expectedResult = toBytes "AAAA\nAAAA\nBBBB\n"
+    assertEqual "result 1" expectedResult actualResult
 
     let expectedStore = HashMap.fromList
-          [ ( Key_ReadFile "/files"
-            , Value_ReadFile (toBytes "/files/a\n/files/a\n/files/b\n")
+          [ ( toSomeValue (ReadFileKey "/files")
+            , toSomeValue (ReadFileValue (toBytes "/files/a\n/files/a\n/files/b\n"))
             )
-          , ( Key_ReadFile "/files/a"
-            , Value_ReadFile (toBytes "AAAA\n")
+          , ( toSomeValue (ReadFileKey "/files/a")
+            , toSomeValue (ReadFileValue (toBytes "AAAA\n"))
             )
-          , ( Key_ReadFile "/files/b"
-            , Value_ReadFile (toBytes "BBBB\n")
+          , ( toSomeValue (ReadFileKey "/files/b")
+            , toSomeValue (ReadFileValue (toBytes "BBBB\n"))
             )
-          , ( Key_Concat "/files"
-            , Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
+          , ( toSomeValue (ConcatKey "/files")
+            , toSomeValue (ConcatValue (toBytes "AAAA\nAAAA\nBBBB\n"))
             )
           ]
     actualStore <- readTVarIO buildState.store
-    assertEqual "store" expectedStore actualStore
+    assertEqual "store 1" expectedStore actualStore
 
     let expectedDone = fmap (const True) expectedStore
     actualDone <- do
@@ -116,38 +82,38 @@ unit_build_system = do
       forM done \tmvar -> do
         isEmpty <- atomically $ isEmptyTMVar tmvar
         pure (not isEmpty)
-    assertEqual "done" expectedDone actualDone
+    assertEqual "done 1" expectedDone actualDone
 
     let expectedTraces =
           [ Trace
-              { key = Key_Concat "/files"
+              { key = toSomeValue (ConcatKey "/files")
               , deps = HashMap.fromList
-                  [ ( Key_ReadFile "/files"
-                    , Hash 217649648357837811
+                  [ ( toSomeValue (ReadFileKey "/files")
+                    , Hash 3092094492212315664
                     )
-                  , ( Key_ReadFile "/files/a"
-                    , Hash 7664945061632064206
+                  , ( toSomeValue (ReadFileKey "/files/a")
+                    , Hash 17845090089657028737
                     )
-                  , ( Key_ReadFile "/files/b"
-                    , Hash 2092587128809980294
+                  , ( toSomeValue (ReadFileKey "/files/b")
+                    , Hash 10613052099717895094
                     )
                   ]
-              , value = Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
+              , value = toSomeValue (ConcatValue (toBytes "AAAA\nAAAA\nBBBB\n"))
               }
           ]
-    actualTraces :: [Trace TestKey TestValue] <- fetchTraces connection Nothing
-    assertEqual "traces" expectedTraces actualTraces
+    actualTraces :: [Trace SomeValue SomeValue] <- fetchTraces connection Nothing
+    assertEqual "traces 1" expectedTraces actualTraces
 
     -- 3 `readFile`s, 1 `concat`
     taskCount <- readTVarIO buildState.debugTaskCount
-    assertEqual "task count" taskCount 4
+    assertEqual "task count 1" taskCount 4
 
-    buildState' <- atomically $ newBuildState connection tasks
+    buildState' <- atomically $ newBuildState' connection tasks
 
     -- Second run should produce the same results...
 
-    taskState' <- atomically $ newTaskState buildState'
-    actualResult' <- taskStateRealize taskState' (Key_Concat path)
+    taskState' <- atomically $ newTaskState' buildState'
+    actualResult' <- realize Concat taskState' path
     assertEqual "result 2" expectedResult actualResult'
 
     actualStore' <- readTVarIO buildState'.store
@@ -160,7 +126,7 @@ unit_build_system = do
         pure (not isEmpty)
     assertEqual "done 2" expectedDone actualDone'
 
-    actualTraces' :: [Trace TestKey TestValue] <- fetchTraces connection Nothing
+    actualTraces' :: [Trace SomeValue SomeValue] <- fetchTraces connection Nothing
     assertEqual "traces 2" expectedTraces actualTraces'
 
     -- ...but not run any non-volatile tasks, because they're cached.
