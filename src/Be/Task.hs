@@ -1,10 +1,11 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
 module Be.Task
   ( Task (..)
   , discoverTasks
-  , ArgsToKey
+  , UncurryN (..)
   )
 where
 
@@ -22,7 +23,7 @@ class
   ( Typeable a
   , Value (TaskKey a)
   , Value (TaskValue a)
-  , Coercible (TaskKey a) (ArgsToKey (TaskArgs a))
+  , Coercible (TaskKey a) (TupleArgs (TaskArgs a))
   , Coercible (TaskValue a) (TaskResult a)
   ) => Task a where
   type TaskArgs a :: [Type]
@@ -52,11 +53,33 @@ lookupTask t = unsafePerformIO do
   pure $ HashMap.lookup t vr
 {-# NOINLINE lookupTask #-}
 
--- TODO: Need a value-level function to convert for use in `taskRealize`.
-type ArgsToKey :: [Type] -> Type
-type family ArgsToKey xs where
-  ArgsToKey '[] = ()
-  ArgsToKey '[x1] = x1
-  ArgsToKey '[x1, x2] = (x1, x2)
-  ArgsToKey '[x1, x2, x3] = (x1, x2, x3)
-  ArgsToKey '[x1, x2, x3, x4] = (x1, x2, x3, x4)
+type UncurryN :: [Type] -> Constraint
+class UncurryN args where
+  type TupleArgs args :: Type
+  type UncurryNF args result :: Type
+  uncurryN :: (args :->: result) -> UncurryNF args result
+
+instance UncurryN '[] where
+  type TupleArgs '[] = ()
+  type UncurryNF '[] result = result
+  uncurryN x = x
+
+instance UncurryN '[a] where
+  type TupleArgs '[a] = a
+  type UncurryNF '[a] result = a -> result
+  uncurryN f = f
+
+instance UncurryN '[a, b] where
+  type TupleArgs '[a, b] = (a, b)
+  type UncurryNF '[a, b] result = (a, b) -> result
+  uncurryN f (a, b) = f a b
+
+instance UncurryN '[a, b, c] where
+  type TupleArgs '[a, b, c] = (a, b, c)
+  type UncurryNF '[a, b, c] result = (a, b, c) -> result
+  uncurryN f (a, b, c) = f a b c
+
+instance UncurryN '[a, b, c, d] where
+  type TupleArgs '[a, b, c, d] = (a, b, c, d)
+  type UncurryNF '[a, b, c, d] result = (a, b, c, d) -> result
+  uncurryN f (a, b, c, d) = f a b c d
