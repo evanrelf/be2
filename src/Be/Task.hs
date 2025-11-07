@@ -49,6 +49,8 @@ class
   taskOptions :: TaskOptions
   taskOptions = defaultTaskOptions
 
+  taskSing :: a
+
   taskBuild :: proxy a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
 
   taskRealize :: proxy a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
@@ -60,8 +62,8 @@ class
     someValue <- taskContextRealize taskContext (toSomeValue (argsToKey args))
     pure (valueToResult (fromSomeValue' someValue))
 
-realize :: forall a -> Task a => TaskContext' -> TaskArgs a :->: IO (TaskResult a)
-realize a = taskRealize @a Proxy
+realize :: Task a => a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
+realize sing = taskRealize (Identity sing)
 
 data TaskOptions = TaskOptions
   { volatile :: Bool
@@ -159,21 +161,26 @@ registerTaskWith funName options = do
             , TH.DerivClause (Just TH.AnyclassStrategy) (map TH.ConT [''Serialise, ''Hashable, ''Value])
             ]
 
-    -- `taskBuild = ...`
-    taskBuildFun <- TH.funD (TH.mkName "taskBuild")
-      [TH.clause [TH.wildP] (TH.normalB (TH.varE funName)) []]
-
     -- `taskOptions = ...`
     taskOptionsFun <- TH.funD (TH.mkName "taskOptions")
       [TH.clause [] (TH.normalB (TH.lift options)) []]
+
+    -- `taskSing = ...`
+    taskSingFun <- TH.funD (TH.mkName "taskSing")
+      [TH.clause [] (TH.normalB (TH.conE dataName)) []]
+
+    -- `taskBuild = ...`
+    taskBuildFun <- TH.funD (TH.mkName "taskBuild")
+      [TH.clause [TH.wildP] (TH.normalB (TH.varE funName)) []]
 
     pure $ TH.InstanceD Nothing [] instanceHead
       [ taskArgsInst
       , taskResultInst
       , taskKeyInst
       , taskValueInst
-      , taskBuildFun
       , taskOptionsFun
+      , taskSingFun
+      , taskBuildFun
       ]
 
 taskRegistry :: IORef (HashMap SomeTypeRep (SomeDict Task))

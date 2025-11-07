@@ -5,7 +5,7 @@ module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
-import Be.Task (Task (..), TaskOptions (..), defaultTaskOptions, discoverTasks, registerTask, registerTaskWith)
+import Be.Task (Task (..), TaskOptions (..), defaultTaskOptions, discoverTasks, realize, registerTask, registerTaskWith)
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
 import Be.Value (SomeValue, Value, discoverValues, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
@@ -173,8 +173,17 @@ add1 _taskContext n = pure (n + 1)
 
 registerTaskWith 'add1 defaultTaskOptions{ volatile = True }
 
+yell :: TaskContext' -> Text -> IO Text
+yell _taskContext message = do
+  pure (message <> "!")
+
+registerTask 'yell
+
 greet :: TaskContext' -> Text -> IO Text
-greet _taskContext name = pure ("Hello, " <> name <> "!")
+greet taskContext name = do
+  let message = "Hello, " <> name
+  message' <- realize Yell taskContext message
+  pure message'
 
 registerTask 'greet
 
@@ -192,6 +201,12 @@ unit_existential_build_system = do
               m <- taskBuild (Proxy @Add1) taskContext n
               let value = toSomeValue (Add1Value m)
               let options = taskOptions @Add1
+              pure (value, options.volatile)
+
+          | Just (YellKey (Identity message)) <- fromSomeValue someValue = do
+              m <- taskBuild (Proxy @Yell) taskContext message
+              let value = toSomeValue (YellValue m)
+              let options = taskOptions @Yell
               pure (value, options.volatile)
 
           | Just (GreetKey (Identity name)) <- fromSomeValue someValue = do
@@ -213,7 +228,7 @@ unit_existential_build_system = do
         let expectedResult = toSomeValue (GreetValue "Hello, Evan!")
         assertEqual "result 1" expectedResult actualResult
       taskCount <- readTVarIO state.debugTaskCount
-      assertEqual "task count 1" taskCount 2
+      assertEqual "task count 1" taskCount 3
 
     do
       state <- atomically $ newState connection tasks
@@ -226,4 +241,4 @@ unit_existential_build_system = do
         let expectedResult = toSomeValue (GreetValue "Hello, Evan!")
         assertEqual "result 1" expectedResult actualResult
       taskCount <- readTVarIO state.debugTaskCount
-      assertEqual "task count 2" taskCount 0
+      assertEqual "task count 2" taskCount 1
