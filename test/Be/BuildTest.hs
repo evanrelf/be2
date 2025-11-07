@@ -5,7 +5,7 @@ module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
-import Be.Task (Task (..), task)
+import Be.Task (Task (..), TaskOptions (..), defaultTaskOptions, discoverTasks, registerTask, registerTaskWith)
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
 import Be.Value (SomeValue, Value, discoverValues, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
@@ -171,16 +171,17 @@ unit_build_system = do
 add1 :: TaskContext' -> Int -> IO Int
 add1 _taskContext n = pure (n + 1)
 
-task 'add1
+registerTaskWith 'add1 defaultTaskOptions{ volatile = True }
 
 greet :: TaskContext' -> Text -> IO Text
 greet _taskContext name = pure ("Hello, " <> name <> "!")
 
-task 'greet
+registerTask 'greet
 
 unit_existential_build_system :: Assertion
 unit_existential_build_system = do
   $$discoverValues
+  $$discoverTasks
 
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection

@@ -1,20 +1,22 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE RequiredTypeArguments #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
 module Be.Task
   ( Task (..)
+  , realize
   , discoverTasks
   , CurryN (..)
-  , task
-  , taskWithOptions
+  , registerTask
+  , registerTaskWith
   , TaskOptions (..)
   , defaultTaskOptions
   )
 where
 
-import Be.Build (TaskContext, taskContextRealize)
-import Be.Value (SomeValue, Value, fromSomeValue', toSomeValue)
+import Be.Build (TaskContext', taskContextRealize)
+import Be.Value (Value, fromSomeValue', toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.Char (toUpper)
 import Data.HashMap.Strict qualified as HashMap
@@ -47,9 +49,9 @@ class
   taskOptions :: TaskOptions
   taskOptions = defaultTaskOptions
 
-  taskBuild :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
+  taskBuild :: proxy a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
 
-  taskRealize :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
+  taskRealize :: proxy a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
   taskRealize _ taskContext = curryN \args -> do
     let argsToKey :: TupleArgs (TaskArgs a) -> TaskKey a
         argsToKey = coerce
@@ -57,6 +59,9 @@ class
         valueToResult = coerce
     someValue <- taskContextRealize taskContext (toSomeValue (argsToKey args))
     pure (valueToResult (fromSomeValue' someValue))
+
+realize :: forall a -> Task a => TaskContext' -> TaskArgs a :->: IO (TaskResult a)
+realize a = taskRealize @a Proxy
 
 data TaskOptions = TaskOptions
   { volatile :: Bool
@@ -69,11 +74,11 @@ defaultTaskOptions =
     { volatile = False
     }
 
-task :: TH.Name -> TH.Q [TH.Dec]
-task funName = taskWithOptions funName defaultTaskOptions
+registerTask :: TH.Name -> TH.Q [TH.Dec]
+registerTask funName = registerTaskWith funName defaultTaskOptions
 
-taskWithOptions :: TH.Name -> TaskOptions -> TH.Q [TH.Dec]
-taskWithOptions funName options = do
+registerTaskWith :: TH.Name -> TaskOptions -> TH.Q [TH.Dec]
+registerTaskWith funName options = do
   info <- TH.reify funName
   typ <- case info of
     TH.VarI _ typ _ -> pure typ
