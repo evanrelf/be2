@@ -88,5 +88,6 @@ test-suite test
     , tasty-hedgehog
     , tasty-hunit
   other-modules:
-    Be.BuildTest
+    Be.Build.DynamicTest
+    Be.Build.StaticTest
     Be.TraceTest

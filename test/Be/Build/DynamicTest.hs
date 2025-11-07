@@ -1,9 +1,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Be.BuildTest where
+module Be.Build.DynamicTest where
 
-import Be.Build
+import Be.Build.Static
 import Be.Hash (Hash (..))
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
 import Be.Value (Value, discoverValues)
@@ -168,62 +168,3 @@ unit_build_system = do
     assertEqual "task count 2" taskCount' 3
 
     pure ()
-
-add1 :: TaskState' -> Int -> IO Int
-add1 _taskState n = pure (n + 1)
-
-registerTaskWith 'add1 defaultTaskOptions{ volatile = True }
-
-yell :: TaskState' -> Text -> IO Text
-yell _taskState message = do
-  pure (message <> "!")
-
-registerTask 'yell
-
-greet :: TaskState' -> Text -> IO Text
-greet taskState name = do
-  let message = "Hello, " <> name
-  message' <- realize Yell taskState message
-  pure message'
-
-registerTask 'greet
-
-unit_existential_build_system :: Assertion
-unit_existential_build_system = do
-  $$discoverValues
-  $$discoverTasks
-
-  SQLite.withConnection ":memory:" \connection -> do
-    dbMigrate connection
-
-    tasks <- getTasks
-
-    do
-      buildState <- atomically $ newBuildState' connection tasks
-      do
-        taskState <- atomically $ newTaskState' buildState
-        actualResult <- realize Add1 taskState 1
-        let expectedResult = 2
-        assertEqual "result 1" expectedResult actualResult
-      do
-        taskState <- atomically $ newTaskState' buildState
-        actualResult <- realize Greet taskState "Evan"
-        let expectedResult = "Hello, Evan!"
-        assertEqual "result 1" expectedResult actualResult
-      taskCount <- readTVarIO buildState.debugTaskCount
-      assertEqual "task count 1" taskCount 3
-
-    do
-      buildState <- atomically $ newBuildState connection tasks
-      do
-        taskState <- atomically $ newTaskState buildState
-        actualResult <- realize Add1 taskState 1
-        let expectedResult = 2
-        assertEqual "result 1" expectedResult actualResult
-      do
-        taskState <- atomically $ newTaskState buildState
-        actualResult <- realize Greet taskState "Evan"
-        let expectedResult = "Hello, Evan!"
-        assertEqual "result 1" expectedResult actualResult
-      taskCount <- readTVarIO buildState.debugTaskCount
-      assertEqual "task count 2" taskCount 1
