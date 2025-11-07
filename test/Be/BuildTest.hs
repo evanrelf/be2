@@ -5,7 +5,7 @@ module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
-import Be.Task (Task (..), TupleArgs)
+import Be.Task (Task (..), TupleArgs, task)
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
 import Be.Value (SomeValue, Value, discoverValues, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
@@ -187,23 +187,10 @@ add1 taskContext n = do
 taskAdd1 :: TaskContext SomeValue SomeValue -> Int -> IO Int
 taskAdd1 _taskContext n = pure (n + 1)
 
-data Greet = Greet
+greet :: TaskContext SomeValue SomeValue -> Text -> IO Text
+greet _taskContext name = pure ("Hello, " <> name <> "!")
 
-instance Task Greet where
-  type TaskArgs _ = '[Text]
-
-  type TaskResult _ = Text
-
-  newtype TaskKey _ = GreetKey (TupleArgs (TaskArgs Greet))
-    deriving stock (Generic, Show, Eq)
-    deriving anyclass (Serialise, Hashable, Value)
-
-  newtype TaskValue _ = GreetValue (TaskResult Greet)
-    deriving stock (Generic, Show, Eq)
-    deriving anyclass (Serialise, Hashable, Value)
-
-  taskBuild _proxy _taskContext name =
-    pure ("Hello, " <> name <> "!")
+task 'greet
 
 unit_existential_build_system :: Assertion
 unit_existential_build_system = do

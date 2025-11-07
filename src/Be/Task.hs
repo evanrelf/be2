@@ -6,11 +6,14 @@ module Be.Task
   ( Task (..)
   , discoverTasks
   , CurryN (..)
+  , task
   )
 where
 
 import Be.Build (TaskContext, taskContextRealize)
 import Be.Value (SomeValue, Value, fromSomeValue', toSomeValue)
+import Codec.Serialise (Serialise)
+import Data.Char (toUpper)
 import Data.HashMap.Strict qualified as HashMap
 import DiscoverInstances (SomeDict, SomeDictOf (..), discoverInstances)
 import Language.Haskell.TH qualified as TH
@@ -48,45 +51,106 @@ class
   taskBuild :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
 
 task :: TH.Name -> TH.Q [TH.Dec]
-task name = do
-  undefined
+task funName = do
+  info <- TH.reify funName
+  typ <- case info of
+    TH.VarI _ typ _ -> pure typ
+    _ -> fail "task: expected a function"
+  (taskArgs, taskResult) <- case argsAndResult typ of
+    ([], _) -> fail "task: function must have at least one argument (TaskContext)"
+    (_taskContext : taskArgs, returnType) -> case unwrapIO returnType of
+      Just taskResult -> pure (taskArgs, taskResult)
+      Nothing -> fail "task: function must run in IO monad"
+  sequence
+    [ generateDataDec
+    , generateInst taskArgs taskResult
+    ]
+  where
+  argsAndResult :: TH.Type -> ([TH.Type], TH.Type)
+  argsAndResult = go []
+    where
+    go args (TH.AppT (TH.AppT TH.ArrowT arg) rest) = go (arg : args) rest
+    go args result = (reverse args, result)
 
--- TODO
---
--- GIVEN THIS INPUT CODE:
---
--- ```haskell
--- greet :: TaskContext SomeValue SomeValue -> Text -> IO Text
--- greet _taskContext name = pure ("Hello, " <> name <> "!")
--- ```
---
--- CALLING THIS TEMPLATE HASKELL CODE:
---
--- ```haskell
--- $(task 'greet)
--- ```
---
--- SHOULD GENERATE THESE DECLARATIONS:
---
--- ```haskell
--- data Greet = Greet
---
--- instance Task Greet where
---   type TaskArgs _ = '[Text]
---
---   type TaskResult _ = Text
---
---   newtype TaskKey _ = GreetKey (TupleArgs (TaskArgs Greet))
---     deriving stock (Generic, Show, Eq)
---     deriving anyclass (Serialise, Hashable, Value)
---
---   newtype TaskValue _ = GreetValue (TaskResult Greet)
---     deriving stock (Generic, Show, Eq)
---     deriving anyclass (Serialise, Hashable, Value)
---
---   taskBuild :: proxy Greet -> TaskContext SomeValue SomeValue -> TaskArgs Greet :->: IO (TaskResult Greet)
---   taskBuild _proxy = \_taskContext name -> pure ("Hello, " <> name <> "!")
--- ```
+  unwrapIO :: TH.Type -> Maybe TH.Type
+  unwrapIO = \case
+    (TH.AppT (TH.ConT f) a) | TH.nameBase f == "IO" -> Just a
+    _ -> Nothing
+
+  capitalizeFirst :: String -> String
+  capitalizeFirst = \case
+    [] -> []
+    (c : cs) -> toUpper c : cs
+
+  baseName = TH.nameBase funName
+  dataName = TH.mkName (capitalizeFirst baseName)
+  keyName = TH.mkName (capitalizeFirst baseName ++ "Key")
+  valueName = TH.mkName (capitalizeFirst baseName ++ "Value")
+
+  generateDataDec :: TH.Q TH.Dec
+  generateDataDec =
+    pure $ TH.DataD [] dataName [] Nothing [TH.NormalC dataName []] []
+
+  generateInst :: [TH.Type] -> TH.Type -> TH.Q TH.Dec
+  generateInst taskArgs taskResult = do
+    let dataType = TH.ConT dataName
+
+    -- `instance Task ...`
+    instanceHead <- [t| Task $(pure dataType) |]
+
+    -- `type TaskArgs _ = ...`
+    taskArgsInst <- do
+      let promote :: [TH.Type] -> TH.Type
+          promote = foldr (\t ts -> TH.AppT (TH.AppT TH.PromotedConsT t) ts) TH.PromotedNilT
+      lhs <- [t| TaskArgs $(pure dataType) |]
+      pure $ TH.TySynInstD $ TH.TySynEqn Nothing lhs (promote taskArgs)
+
+    -- `type TaskResult _ = ...`
+    taskResultInst <- do
+      lhs <- [t| TaskResult $(pure dataType) |]
+      pure $ TH.TySynInstD $ TH.TySynEqn Nothing lhs taskResult
+
+    let newtypeField typ = [(TH.Bang TH.NoSourceUnpackedness TH.NoSourceStrictness, typ)]
+
+    -- `newtype TaskKey _ = ...`
+    taskKeyInst <- TH.NewtypeInstD [] Nothing
+      <$> [t| TaskKey $(pure dataType) |]
+      <*> pure Nothing
+      <*> (TH.NormalC keyName . newtypeField <$> [t| TupleArgs (TaskArgs $(pure dataType)) |])
+      <*> pure
+            [ TH.DerivClause (Just TH.StockStrategy) (map TH.ConT [''Generic, ''Show, ''Eq])
+            , TH.DerivClause (Just TH.AnyclassStrategy) (map TH.ConT [''Serialise, ''Hashable, ''Value])
+            ]
+
+    -- `newtype TaskValue _ = ...`
+    taskValueInst <- TH.NewtypeInstD [] Nothing
+      <$> [t| TaskValue $(pure dataType) |]
+      <*> pure Nothing
+      <*> (TH.NormalC valueName . newtypeField <$> [t| TaskResult $(pure dataType) |])
+      <*> pure
+            [ TH.DerivClause (Just TH.StockStrategy) (map TH.ConT [''Generic, ''Show, ''Eq])
+            , TH.DerivClause (Just TH.AnyclassStrategy) (map TH.ConT [''Serialise, ''Hashable, ''Value])
+            ]
+
+    -- `taskBuild :: ...`
+    proxyVar <- TH.newName "proxy"
+    taskBuildSig <- TH.sigD (TH.mkName "taskBuild")
+      [t| $(TH.varT proxyVar) $(pure dataType)
+          -> TaskContext SomeValue SomeValue
+          -> TaskArgs $(pure dataType) :->: IO (TaskResult $(pure dataType)) |]
+
+    -- `taskBuild = ...`
+    taskBuildFun <- TH.funD (TH.mkName "taskBuild")
+      [TH.clause [TH.wildP] (TH.normalB (TH.varE funName)) []]
+
+    pure $ TH.InstanceD Nothing [] instanceHead
+      [ taskArgsInst
+      , taskResultInst
+      , taskKeyInst
+      , taskValueInst
+      , taskBuildSig
+      , taskBuildFun
+      ]
 
 taskRegistry :: IORef (HashMap SomeTypeRep (SomeDict Task))
 taskRegistry = unsafePerformIO $ newIORef HashMap.empty
