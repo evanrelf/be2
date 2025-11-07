@@ -5,13 +5,12 @@
 module Be.Task
   ( Task (..)
   , discoverTasks
-  , TupleArgs
-  , UncurryN (..)
+  , CurryN (..)
   )
 where
 
-import Be.Build (TaskContext)
-import Be.Value (SomeValue, Value)
+import Be.Build (TaskContext, taskContextRealize)
+import Be.Value (SomeValue, Value, fromSomeValue', toSomeValue)
 import Data.HashMap.Strict qualified as HashMap
 import DiscoverInstances (SomeDict, SomeDictOf (..), discoverInstances)
 import Language.Haskell.TH qualified as TH
@@ -26,12 +25,26 @@ class
   , Value (TaskValue a)
   , Coercible (TaskKey a) (TupleArgs (TaskArgs a))
   , Coercible (TaskValue a) (TaskResult a)
-  ) => Task a where
+  , CurryN (TaskArgs a)
+  )
+  => Task a where
   type TaskArgs a :: [Type]
+
   type TaskResult a :: Type
+
   data TaskKey a :: Type
+
   data TaskValue a :: Type
+
   taskRealize :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
+  taskRealize _ taskContext = curryN \args -> do
+    let argsToKey :: TupleArgs (TaskArgs a) -> TaskKey a
+        argsToKey = coerce
+    let valueToResult :: TaskValue a -> TaskResult a
+        valueToResult = coerce
+    someValue <- taskContextRealize taskContext (toSomeValue (argsToKey args))
+    pure (valueToResult (fromSomeValue' someValue))
+
   taskBuild :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
 
 taskRegistry :: IORef (HashMap SomeTypeRep (SomeDict Task))
@@ -54,35 +67,27 @@ lookupTask t = unsafePerformIO do
   pure $ HashMap.lookup t vr
 {-# NOINLINE lookupTask #-}
 
-type TupleArgs :: [Type] -> Type
-type family TupleArgs args where
-  TupleArgs '[] = ()
-  TupleArgs '[a] = a
-  TupleArgs '[a, b] = (a, b)
-  TupleArgs '[a, b, c] = (a, b, c)
-  TupleArgs '[a, b, c, d] = (a, b, c, d)
+type CurryN :: [Type] -> Constraint
+class CurryN args where
+  type TupleArgs args = (r :: Type) | r -> args
+  curryN :: (TupleArgs args -> result) -> (args :->: result)
 
-type UncurryN :: [Type] -> Constraint
-class UncurryN args where
-  type UncurryNF args result :: Type
-  uncurryN :: (args :->: result) -> UncurryNF args result
+instance CurryN '[] where
+  type TupleArgs '[] = ()
+  curryN f = f ()
 
-instance UncurryN '[] where
-  type UncurryNF '[] result = result
-  uncurryN x = x
+instance CurryN '[a] where
+  type TupleArgs '[a] = Identity a
+  curryN f a = f (Identity a)
 
-instance UncurryN '[a] where
-  type UncurryNF '[a] result = a -> result
-  uncurryN f = f
+instance CurryN '[a, b] where
+  type TupleArgs '[a, b] = (a, b)
+  curryN f a b = f (a, b)
 
-instance UncurryN '[a, b] where
-  type UncurryNF '[a, b] result = (a, b) -> result
-  uncurryN f (a, b) = f a b
+instance CurryN '[a, b, c] where
+  type TupleArgs '[a, b, c] = (a, b, c)
+  curryN f a b c = f (a, b, c)
 
-instance UncurryN '[a, b, c] where
-  type UncurryNF '[a, b, c] result = (a, b, c) -> result
-  uncurryN f (a, b, c) = f a b c
-
-instance UncurryN '[a, b, c, d] where
-  type UncurryNF '[a, b, c, d] result = (a, b, c, d) -> result
-  uncurryN f (a, b, c, d) = f a b c d
+instance CurryN '[a, b, c, d] where
+  type TupleArgs '[a, b, c, d] = (a, b, c, d)
+  curryN f a b c d = f (a, b, c, d)

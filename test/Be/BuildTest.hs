@@ -5,9 +5,9 @@ module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
-import Be.Task (ArgsToKey, Task (..))
+import Be.Task (Task (..), TupleArgs)
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
-import Be.Value (SomeValue, Value, discoverValues, fromSomeValue, fromSomeValue', toSomeValue)
+import Be.Value (SomeValue, Value, discoverValues, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
@@ -194,7 +194,7 @@ instance Task Greet where
 
   type TaskResult _ = Text
 
-  newtype TaskKey _ = GreetKey (ArgsToKey (TaskArgs Greet))
+  newtype TaskKey _ = GreetKey (TupleArgs (TaskArgs Greet))
     deriving stock (Generic, Show, Eq)
     deriving anyclass (Serialise, Hashable, Value)
 
@@ -202,12 +202,7 @@ instance Task Greet where
     deriving stock (Generic, Show, Eq)
     deriving anyclass (Serialise, Hashable, Value)
 
-  taskRealize _ = \taskContext name -> do
-    someValue <- taskContextRealize taskContext (toSomeValue (GreetKey name))
-    case fromSomeValue' someValue of
-      GreetValue greeting -> pure greeting
-
-  taskBuild _ = \_taskContext name ->
+  taskBuild _proxy _taskContext name =
     pure ("Hello, " <> name <> "!")
 
 unit_existential_build_system :: Assertion
@@ -225,7 +220,7 @@ unit_existential_build_system = do
               let volatile = False
               pure (value, volatile)
 
-          | Just (GreetKey name) <- fromSomeValue someValue = do
+          | Just (GreetKey (Identity name)) <- fromSomeValue someValue = do
               greeting <- taskBuild (Proxy @Greet) taskContext name
               let value = toSomeValue (GreetValue greeting)
               let volatile = False
