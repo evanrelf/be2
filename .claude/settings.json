@@ -1,0 +1,14 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": false
+  },
+  "permissions": {
+    "allow": [
+      "Bash(cabal build:*)",
+      "Bash(cabal test:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
