@@ -170,15 +170,7 @@ data ExistsKey_Add1 = ExistsKey_Add1 Int
   deriving stock (Generic, Show, Eq)
   deriving anyclass (Serialise, Hashable, Value)
 
-data ExistsKey_Greet = ExistsKey_Greet Text
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass (Serialise, Hashable, Value)
-
 data ExistsValue_Add1 = ExistsValue_Add1 Int
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass (Serialise, Hashable, Value)
-
-data ExistsValue_Greet = ExistsValue_Greet Text
   deriving stock (Generic, Show, Eq)
   deriving anyclass (Serialise, Hashable, Value)
 
@@ -192,6 +184,14 @@ add1 taskContext n = do
 
 taskAdd1 :: TaskContext SomeValue SomeValue -> Int -> IO Int
 taskAdd1 _taskContext n = pure (n + 1)
+
+data ExistsKey_Greet = ExistsKey_Greet Text
+  deriving stock (Generic, Show, Eq)
+  deriving anyclass (Serialise, Hashable, Value)
+
+data ExistsValue_Greet = ExistsValue_Greet Text
+  deriving stock (Generic, Show, Eq)
+  deriving anyclass (Serialise, Hashable, Value)
 
 greet :: TaskContext SomeValue SomeValue -> Text -> IO Text
 greet taskContext name = do
