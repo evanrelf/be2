@@ -166,24 +166,28 @@ unit_build_system = do
 
     pure ()
 
-data ExistsKey
-  = Key_Add1 Int
-  | Key_Greet Text
+data ExistsKey_Add1 = ExistsKey_Add1 Int
   deriving stock (Generic, Show, Eq)
   deriving anyclass (Serialise, Hashable, Value)
 
-data ExistsValue
-  = Value_Add1 Int
-  | Value_Greet Text
+data ExistsKey_Greet = ExistsKey_Greet Text
+  deriving stock (Generic, Show, Eq)
+  deriving anyclass (Serialise, Hashable, Value)
+
+data ExistsValue_Add1 = ExistsValue_Add1 Int
+  deriving stock (Generic, Show, Eq)
+  deriving anyclass (Serialise, Hashable, Value)
+
+data ExistsValue_Greet = ExistsValue_Greet Text
   deriving stock (Generic, Show, Eq)
   deriving anyclass (Serialise, Hashable, Value)
 
 add1 :: TaskContext SomeValue SomeValue -> Int -> IO Int
 add1 taskContext n = do
-  let key = Key_Add1 n
+  let key = ExistsKey_Add1 n
   value <- taskContextRealize taskContext (toSomeValue key)
   case fromSomeValue value of
-    Just (Value_Add1 m) -> pure m
+    Just (ExistsValue_Add1 m) -> pure m
     _ -> error $ "unexpected: " <> show value
 
 taskAdd1 :: TaskContext SomeValue SomeValue -> Int -> IO Int
@@ -191,10 +195,10 @@ taskAdd1 _taskContext n = pure (n + 1)
 
 greet :: TaskContext SomeValue SomeValue -> Text -> IO Text
 greet taskContext name = do
-  let key = Key_Greet name
+  let key = ExistsKey_Greet name
   value <- taskContextRealize taskContext (toSomeValue key)
   case fromSomeValue value of
-    Just (Value_Greet greeting) -> pure greeting
+    Just (ExistsValue_Greet greeting) -> pure greeting
     _ -> error $ "unexpected: " <> show value
 
 taskGreet :: TaskContext SomeValue SomeValue -> Text -> IO Text
@@ -208,31 +212,30 @@ unit_existential_build_system = do
     dbMigrate connection
 
     let tasks :: TaskContext SomeValue SomeValue -> SomeValue -> IO (SomeValue, Bool)
-        tasks taskContext someValue =
-          case fromSomeValue someValue of
-            Just (Key_Add1 n) -> do
+        tasks taskContext someValue
+          | Just (ExistsKey_Add1 n) <- fromSomeValue someValue = do
               m <- taskAdd1 taskContext n
-              let value = toSomeValue (Value_Add1 m)
+              let value = toSomeValue (ExistsValue_Add1 m)
               let volatile = False
               pure (value, volatile)
 
-            Just (Key_Greet name) -> do
+          | Just (ExistsKey_Greet name) <- fromSomeValue someValue = do
               greeting <- taskGreet taskContext name
-              let value = toSomeValue (Value_Greet greeting)
+              let value = toSomeValue (ExistsValue_Greet greeting)
               let volatile = False
               pure (value, volatile)
 
-            Nothing -> error $ "unexpected: " <> show someValue
+          | otherwise = error $ "unexpected: " <> show someValue
 
     do
       state <- atomically $ newState connection tasks
       do
-        actualResult <- stateRealize state (toSomeValue (Key_Add1 1))
-        let expectedResult = toSomeValue (Value_Add1 2)
+        actualResult <- stateRealize state (toSomeValue (ExistsKey_Add1 1))
+        let expectedResult = toSomeValue (ExistsValue_Add1 2)
         assertEqual "result 1" expectedResult actualResult
       do
-        actualResult <- stateRealize state (toSomeValue (Key_Greet "Evan"))
-        let expectedResult = toSomeValue (Value_Greet "Hello, Evan!")
+        actualResult <- stateRealize state (toSomeValue (ExistsKey_Greet "Evan"))
+        let expectedResult = toSomeValue (ExistsValue_Greet "Hello, Evan!")
         assertEqual "result 1" expectedResult actualResult
       taskCount <- readTVarIO state.debugTaskCount
       assertEqual "task count 1" taskCount 2
@@ -240,12 +243,12 @@ unit_existential_build_system = do
     do
       state <- atomically $ newState connection tasks
       do
-        actualResult <- stateRealize state (toSomeValue (Key_Add1 1))
-        let expectedResult = toSomeValue (Value_Add1 2)
+        actualResult <- stateRealize state (toSomeValue (ExistsKey_Add1 1))
+        let expectedResult = toSomeValue (ExistsValue_Add1 2)
         assertEqual "result 1" expectedResult actualResult
       do
-        actualResult <- stateRealize state (toSomeValue (Key_Greet "Evan"))
-        let expectedResult = toSomeValue (Value_Greet "Hello, Evan!")
+        actualResult <- stateRealize state (toSomeValue (ExistsKey_Greet "Evan"))
+        let expectedResult = toSomeValue (ExistsValue_Greet "Hello, Evan!")
         assertEqual "result 1" expectedResult actualResult
       taskCount <- readTVarIO state.debugTaskCount
       assertEqual "task count 2" taskCount 0
