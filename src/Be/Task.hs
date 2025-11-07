@@ -85,7 +85,7 @@ taskWithOptions funName options = do
       Nothing -> fail "task: function must run in IO monad"
   sequence
     [ generateDataDec
-    , generateInst taskArgs taskResult
+    , generateInstDec taskArgs taskResult
     ]
   where
   argsAndResult :: TH.Type -> ([TH.Type], TH.Type)
@@ -113,8 +113,8 @@ taskWithOptions funName options = do
   generateDataDec =
     pure $ TH.DataD [] dataName [] Nothing [TH.NormalC dataName []] []
 
-  generateInst :: [TH.Type] -> TH.Type -> TH.Q TH.Dec
-  generateInst taskArgs taskResult = do
+  generateInstDec :: [TH.Type] -> TH.Type -> TH.Q TH.Dec
+  generateInstDec taskArgs taskResult = do
     let dataType = TH.ConT dataName
 
     -- `instance Task ...`
