@@ -5,7 +5,7 @@ module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
-import Be.Task (Task (..), TaskHandler (..), TaskOptions (..), defaultTaskOptions, discoverTasks, realize, registerTask, registerTaskWith)
+import Be.Task (Task (..), TaskHandler (..), TaskOptions (..), defaultTaskOptions, discoverTasks, getTaskHandlers, realize, registerTask, registerTaskWith)
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
 import Be.Value (SomeValue (..), Value, discoverValues, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
@@ -195,9 +195,11 @@ unit_existential_build_system = do
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
-    let tasksHandler :: [TaskHandler] -> TaskContext' -> SomeValue -> IO (SomeValue, Bool)
-        tasksHandler handlers taskContext someKey@(SomeValue t _) =
-          foldr tryHandler fallback handlers
+    taskHandlers <- getTaskHandlers
+
+    let tasks :: TaskContext' -> SomeValue -> IO (SomeValue, Bool)
+        tasks taskContext someKey@(SomeValue t _) =
+          foldr tryHandler fallback taskHandlers
           where
           tryHandler (TaskHandler handler) rest =
             case fromSomeValue someKey of
@@ -207,13 +209,6 @@ unit_existential_build_system = do
               Nothing -> rest
 
           fallback = error $ "No task handler for `" <> show t <> "`"
-
-    let tasks :: TaskContext' -> SomeValue -> IO (SomeValue, Bool)
-        tasks = tasksHandler
-          [ TaskHandler (taskHandler (Proxy @Add1))
-          , TaskHandler (taskHandler (Proxy @Yell))
-          , TaskHandler (taskHandler (Proxy @Greet))
-          ]
 
     do
       state <- atomically $ newState connection tasks
