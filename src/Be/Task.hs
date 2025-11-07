@@ -13,12 +13,12 @@ module Be.Task
   , TaskOptions (..)
   , defaultTaskOptions
   , TaskHandler (..)
-  , getTaskHandlers
+  , getTasks
   )
 where
 
 import Be.Build (TaskContext', taskContextRealize)
-import Be.Value (Value, fromSomeValue', toSomeValue)
+import Be.Value (SomeValue (..), Value, fromSomeValue, fromSomeValue', toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.Char (toUpper)
 import Data.HashMap.Strict qualified as HashMap
@@ -220,6 +220,19 @@ getTaskHandlers = do
   let toHandler :: SomeDict Task -> TaskHandler
       toHandler (SomeDictOf proxy) = TaskHandler (taskHandler proxy)
   pure (map toHandler dicts)
+
+getTasks :: IO (TaskContext' -> SomeValue -> IO (SomeValue, Bool))
+getTasks = do
+  taskHandlers <- getTaskHandlers
+  pure \taskContext someKey@(SomeValue t _) -> do
+    let tryHandler (TaskHandler handler) rest =
+          case fromSomeValue someKey of
+            Just key -> do
+              (value, volatile) <- handler taskContext key
+              pure (toSomeValue value, volatile)
+            Nothing -> rest
+    let fallback = error $ "No task handler for `" <> show t <> "`"
+    foldr tryHandler fallback taskHandlers
 
 type CurryN :: [Type] -> Constraint
 class CurryN args where

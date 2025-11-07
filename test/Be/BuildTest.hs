@@ -5,9 +5,9 @@ module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
-import Be.Task (Task (..), TaskHandler (..), TaskOptions (..), defaultTaskOptions, discoverTasks, getTaskHandlers, realize, registerTask, registerTaskWith)
+import Be.Task (Task (..), TaskOptions (..), defaultTaskOptions, discoverTasks, getTasks, realize, registerTask, registerTaskWith)
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
-import Be.Value (SomeValue (..), Value, discoverValues, fromSomeValue, toSomeValue)
+import Be.Value (Value, discoverValues, toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
@@ -195,20 +195,7 @@ unit_existential_build_system = do
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
-    taskHandlers <- getTaskHandlers
-
-    let tasks :: TaskContext' -> SomeValue -> IO (SomeValue, Bool)
-        tasks taskContext someKey@(SomeValue t _) =
-          foldr tryHandler fallback taskHandlers
-          where
-          tryHandler (TaskHandler handler) rest =
-            case fromSomeValue someKey of
-              Just key -> do
-                (value, volatile) <- handler taskContext key
-                pure (toSomeValue value, volatile)
-              Nothing -> rest
-
-          fallback = error $ "No task handler for `" <> show t <> "`"
+    tasks <- getTasks
 
     do
       state <- atomically $ newState connection tasks
