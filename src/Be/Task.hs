@@ -7,13 +7,11 @@ module Be.Task
   ( Task (..)
   , realize
   , discoverTasks
-  , CurryN (..)
+  , getTasks
   , registerTask
   , registerTaskWith
   , TaskOptions (..)
   , defaultTaskOptions
-  , TaskHandler (..)
-  , getTasks
   )
 where
 
