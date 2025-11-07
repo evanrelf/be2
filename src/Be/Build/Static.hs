@@ -3,8 +3,8 @@
 module Be.Build.Static
   ( State (..)
   , newState
-  , stateRealize
   , TaskContext (..)
+  , newTaskContext
   , taskContextRealize
   , State'
   , TaskContext'

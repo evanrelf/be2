@@ -88,7 +88,8 @@ unit_build_system = do
 
     let path = "/files"
 
-    actualResult <- stateRealize state (Key_Concat path)
+    taskContext <- atomically $ newTaskContext state
+    actualResult <- taskContextRealize taskContext (Key_Concat path)
     let expectedResult = Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
     assertEqual "result" expectedResult actualResult
 
@@ -145,7 +146,8 @@ unit_build_system = do
 
     -- Second run should produce the same results...
 
-    actualResult' <- stateRealize state' (Key_Concat path)
+    taskContext' <- atomically $ newTaskContext state'
+    actualResult' <- taskContextRealize taskContext' (Key_Concat path)
     assertEqual "result 2" expectedResult actualResult'
 
     actualStore' <- readTVarIO state'.store
@@ -200,11 +202,13 @@ unit_existential_build_system = do
     do
       state <- atomically $ newState connection tasks
       do
-        actualResult <- stateRealize state (toSomeValue (Add1Key 1))
+        taskContext <- atomically $ newTaskContext state
+        actualResult <- taskContextRealize taskContext (toSomeValue (Add1Key 1))
         let expectedResult = toSomeValue (Add1Value 2)
         assertEqual "result 1" expectedResult actualResult
       do
-        actualResult <- stateRealize state (toSomeValue (GreetKey "Evan"))
+        taskContext <- atomically $ newTaskContext state
+        actualResult <- taskContextRealize taskContext (toSomeValue (GreetKey "Evan"))
         let expectedResult = toSomeValue (GreetValue "Hello, Evan!")
         assertEqual "result 1" expectedResult actualResult
       taskCount <- readTVarIO state.debugTaskCount
@@ -213,11 +217,13 @@ unit_existential_build_system = do
     do
       state <- atomically $ newState connection tasks
       do
-        actualResult <- stateRealize state (toSomeValue (Add1Key 1))
+        taskContext <- atomically $ newTaskContext state
+        actualResult <- taskContextRealize taskContext (toSomeValue (Add1Key 1))
         let expectedResult = toSomeValue (Add1Value 2)
         assertEqual "result 1" expectedResult actualResult
       do
-        actualResult <- stateRealize state (toSomeValue (GreetKey "Evan"))
+        taskContext <- atomically $ newTaskContext state
+        actualResult <- taskContextRealize taskContext (toSomeValue (GreetKey "Evan"))
         let expectedResult = toSomeValue (GreetValue "Hello, Evan!")
         assertEqual "result 1" expectedResult actualResult
       taskCount <- readTVarIO state.debugTaskCount
