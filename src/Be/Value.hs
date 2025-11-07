@@ -3,7 +3,7 @@
 
 module Be.Value
   ( Value
-  , registerValues
+  , discoverValues
   , SomeValue (..)
   , toSomeValue
   , fromSomeValue
@@ -70,8 +70,8 @@ valueRegistry :: IORef (HashMap SomeTypeRep (SomeDict Value))
 valueRegistry = unsafePerformIO $ newIORef HashMap.empty
 {-# NOINLINE valueRegistry #-}
 
-registerValues :: TH.Code TH.Q (IO ())
-registerValues = [|| do
+discoverValues :: TH.Code TH.Q (IO ())
+discoverValues = [|| do
     let dicts :: [SomeDict Value]
         dicts = $$discoverInstances
     let values = dicts

@@ -5,7 +5,7 @@ module Be.BuildTest where
 import Be.Build
 import Be.Hash (Hash (..))
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
-import Be.Value (SomeValue, Value, fromSomeValue, registerValues, toSomeValue)
+import Be.Value (SomeValue, Value, discoverValues, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
@@ -206,7 +206,7 @@ taskGreet _taskContext name = pure ("Hello, " <> name <> "!")
 
 unit_existential_build_system :: Assertion
 unit_existential_build_system = do
-  $$registerValues
+  $$discoverValues
 
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
