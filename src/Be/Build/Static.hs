@@ -2,10 +2,8 @@
 
 module Be.Build.Static
   ( BuildState (..)
-  , BuildState'
   , newBuildState
   , TaskState (..)
-  , TaskState'
   , newTaskState
   , taskStateRealize
   )
@@ -13,7 +11,7 @@ where
 
 import Be.Hash (Hash, hash)
 import Be.Trace (Trace (..), fetchTraces, insertTrace)
-import Be.Value (SomeValue, Value)
+import Be.Value (Value)
 import Control.Exception (assert)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
@@ -29,8 +27,6 @@ data BuildState k v = BuildState
   , store :: TVar (HashMap k v)
   , debugTaskCount :: TVar Int
   }
-
-type BuildState' = BuildState SomeValue SomeValue
 
 newBuildState
   :: SQLite.Connection
@@ -112,8 +108,6 @@ data TaskState k v = TaskState
   { buildState :: BuildState k v
   , deps :: TVar (HashMap k Hash)
   }
-
-type TaskState' = TaskState SomeValue SomeValue
 
 newTaskState :: BuildState k v -> STM (TaskState k v)
 newTaskState buildState = do
