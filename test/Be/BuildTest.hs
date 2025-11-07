@@ -188,13 +188,13 @@ unit_existential_build_system = do
     let tasks :: TaskContext' -> SomeValue -> IO (SomeValue, Bool)
         tasks taskContext someValue
           | Just (Add1Key (Identity n)) <- fromSomeValue someValue = do
-              m <- taskBuild @Add1 taskContext n
+              m <- taskBuild (Proxy @Add1) taskContext n
               let value = toSomeValue (Add1Value m)
               let volatile = False
               pure (value, volatile)
 
           | Just (GreetKey (Identity name)) <- fromSomeValue someValue = do
-              greeting <- taskBuild @Greet taskContext name
+              greeting <- taskBuild (Proxy @Greet) taskContext name
               let value = toSomeValue (GreetValue greeting)
               let volatile = False
               pure (value, volatile)

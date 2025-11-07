@@ -47,10 +47,10 @@ class
   taskOptions :: TaskOptions
   taskOptions = defaultTaskOptions
 
-  taskBuild :: TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
+  taskBuild :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
 
-  taskRealize :: TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
-  taskRealize taskContext = curryN \args -> do
+  taskRealize :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
+  taskRealize _ taskContext = curryN \args -> do
     let argsToKey :: TupleArgs (TaskArgs a) -> TaskKey a
         argsToKey = coerce
     let valueToResult :: TaskValue a -> TaskResult a
@@ -156,7 +156,7 @@ taskWithOptions funName options = do
 
     -- `taskBuild = ...`
     taskBuildFun <- TH.funD (TH.mkName "taskBuild")
-      [TH.clause [] (TH.normalB (TH.varE funName)) []]
+      [TH.clause [TH.wildP] (TH.normalB (TH.varE funName)) []]
 
     -- `taskOptions = ...`
     taskOptionsFun <- TH.funD (TH.mkName "taskOptions")
