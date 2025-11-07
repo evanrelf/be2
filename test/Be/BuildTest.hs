@@ -11,7 +11,7 @@ import Be.Value (Value, discoverValues, toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
-import Prelude hiding (concat, readFile, state)
+import Prelude hiding (concat, readFile)
 import Test.Tasty.HUnit
 
 data TestKey
@@ -26,16 +26,16 @@ data TestValue
   deriving stock (Generic, Show, Eq)
   deriving anyclass (Serialise, Hashable, Value)
 
-readFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
-readFile taskContext path = do
+readFile :: TaskState TestKey TestValue -> FilePath -> IO ByteString
+readFile taskState path = do
   let key = Key_ReadFile path
-  value <- taskContextRealize taskContext key
+  value <- taskStateRealize taskState key
   case value of
     Value_ReadFile bytes -> pure bytes
     _ -> error $ "unexpected: " <> show value
 
-taskReadFile :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
-taskReadFile _taskContext path = do
+taskReadFile :: TaskState TestKey TestValue -> FilePath -> IO ByteString
+taskReadFile _taskState path = do
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
   let bytes = case path of
@@ -46,20 +46,20 @@ taskReadFile _taskContext path = do
         _ -> error $ "Failed to read file at '" <> toText path <> "'"
   pure bytes
 
-concat :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
-concat taskContext path = do
+concat :: TaskState TestKey TestValue -> FilePath -> IO ByteString
+concat taskState path = do
   let key = Key_Concat path
-  value <- taskContextRealize taskContext key
+  value <- taskStateRealize taskState key
   case value of
     Value_Concat bytes -> pure bytes
     _ -> error $ "unexpected: " <> show value
 
-taskConcat :: TaskContext TestKey TestValue -> FilePath -> IO ByteString
-taskConcat taskContext path = do
-  bytes <- readFile taskContext path
+taskConcat :: TaskState TestKey TestValue -> FilePath -> IO ByteString
+taskConcat taskState path = do
+  bytes <- readFile taskState path
   let text = decodeUtf8 bytes
   let paths = map toString (lines text)
-  output <- foldMapM (readFile taskContext) paths
+  output <- foldMapM (readFile taskState) paths
   pure output
 
 unit_build_system :: Assertion
@@ -70,26 +70,26 @@ unit_build_system = do
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
-    let tasks :: TaskContext TestKey TestValue -> TestKey -> IO (TestValue, Bool)
-        tasks taskContext = \case
+    let tasks :: TaskState TestKey TestValue -> TestKey -> IO (TestValue, Bool)
+        tasks taskState = \case
           Key_ReadFile path -> do
-            bytes <- taskReadFile taskContext path
+            bytes <- taskReadFile taskState path
             let value = Value_ReadFile bytes
             let volatile = True
             pure (value, volatile)
 
           Key_Concat path -> do
-            bytes <- taskConcat taskContext path
+            bytes <- taskConcat taskState path
             let value = Value_Concat bytes
             let volatile = False
             pure (value, volatile)
 
-    state <- atomically $ newState connection tasks
+    buildState <- atomically $ newBuildState connection tasks
 
     let path = "/files"
 
-    taskContext <- atomically $ newTaskContext state
-    actualResult <- taskContextRealize taskContext (Key_Concat path)
+    taskState <- atomically $ newTaskState buildState
+    actualResult <- taskStateRealize taskState (Key_Concat path)
     let expectedResult = Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
     assertEqual "result" expectedResult actualResult
 
@@ -107,12 +107,12 @@ unit_build_system = do
             , Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")
             )
           ]
-    actualStore <- readTVarIO state.store
+    actualStore <- readTVarIO buildState.store
     assertEqual "store" expectedStore actualStore
 
     let expectedDone = fmap (const True) expectedStore
     actualDone <- do
-      done <- readTVarIO state.done
+      done <- readTVarIO buildState.done
       forM done \tmvar -> do
         isEmpty <- atomically $ isEmptyTMVar tmvar
         pure (not isEmpty)
@@ -139,22 +139,22 @@ unit_build_system = do
     assertEqual "traces" expectedTraces actualTraces
 
     -- 3 `readFile`s, 1 `concat`
-    taskCount <- readTVarIO state.debugTaskCount
+    taskCount <- readTVarIO buildState.debugTaskCount
     assertEqual "task count" taskCount 4
 
-    state' <- atomically $ newState connection tasks
+    buildState' <- atomically $ newBuildState connection tasks
 
     -- Second run should produce the same results...
 
-    taskContext' <- atomically $ newTaskContext state'
-    actualResult' <- taskContextRealize taskContext' (Key_Concat path)
+    taskState' <- atomically $ newTaskState buildState'
+    actualResult' <- taskStateRealize taskState' (Key_Concat path)
     assertEqual "result 2" expectedResult actualResult'
 
-    actualStore' <- readTVarIO state'.store
+    actualStore' <- readTVarIO buildState'.store
     assertEqual "store 2" expectedStore actualStore'
 
     actualDone' <- do
-      done <- readTVarIO state'.done
+      done <- readTVarIO buildState'.done
       forM done \tmvar -> do
         isEmpty <- atomically $ isEmptyTMVar tmvar
         pure (not isEmpty)
@@ -165,26 +165,26 @@ unit_build_system = do
 
     -- ...but not run any non-volatile tasks, because they're cached.
     -- 3 `readFile`s (volatile), 1 `concat` (non-volatile)
-    taskCount' <- readTVarIO state'.debugTaskCount
+    taskCount' <- readTVarIO buildState'.debugTaskCount
     assertEqual "task count 2" taskCount' 3
 
     pure ()
 
-add1 :: TaskContext' -> Int -> IO Int
-add1 _taskContext n = pure (n + 1)
+add1 :: TaskState' -> Int -> IO Int
+add1 _taskState n = pure (n + 1)
 
 registerTaskWith 'add1 defaultTaskOptions{ volatile = True }
 
-yell :: TaskContext' -> Text -> IO Text
-yell _taskContext message = do
+yell :: TaskState' -> Text -> IO Text
+yell _taskState message = do
   pure (message <> "!")
 
 registerTask 'yell
 
-greet :: TaskContext' -> Text -> IO Text
-greet taskContext name = do
+greet :: TaskState' -> Text -> IO Text
+greet taskState name = do
   let message = "Hello, " <> name
-  message' <- realize Yell taskContext message
+  message' <- realize Yell taskState message
   pure message'
 
 registerTask 'greet
@@ -200,31 +200,31 @@ unit_existential_build_system = do
     tasks <- getTasks
 
     do
-      state <- atomically $ newState connection tasks
+      buildState <- atomically $ newBuildState connection tasks
       do
-        taskContext <- atomically $ newTaskContext state
-        actualResult <- taskContextRealize taskContext (toSomeValue (Add1Key 1))
+        taskState <- atomically $ newTaskState buildState
+        actualResult <- taskStateRealize taskState (toSomeValue (Add1Key 1))
         let expectedResult = toSomeValue (Add1Value 2)
         assertEqual "result 1" expectedResult actualResult
       do
-        taskContext <- atomically $ newTaskContext state
-        actualResult <- taskContextRealize taskContext (toSomeValue (GreetKey "Evan"))
+        taskState <- atomically $ newTaskState buildState
+        actualResult <- taskStateRealize taskState (toSomeValue (GreetKey "Evan"))
         let expectedResult = toSomeValue (GreetValue "Hello, Evan!")
         assertEqual "result 1" expectedResult actualResult
-      taskCount <- readTVarIO state.debugTaskCount
+      taskCount <- readTVarIO buildState.debugTaskCount
       assertEqual "task count 1" taskCount 3
 
     do
-      state <- atomically $ newState connection tasks
+      buildState <- atomically $ newBuildState connection tasks
       do
-        taskContext <- atomically $ newTaskContext state
-        actualResult <- taskContextRealize taskContext (toSomeValue (Add1Key 1))
+        taskState <- atomically $ newTaskState buildState
+        actualResult <- taskStateRealize taskState (toSomeValue (Add1Key 1))
         let expectedResult = toSomeValue (Add1Value 2)
         assertEqual "result 1" expectedResult actualResult
       do
-        taskContext <- atomically $ newTaskContext state
-        actualResult <- taskContextRealize taskContext (toSomeValue (GreetKey "Evan"))
+        taskState <- atomically $ newTaskState buildState
+        actualResult <- taskStateRealize taskState (toSomeValue (GreetKey "Evan"))
         let expectedResult = toSomeValue (GreetValue "Hello, Evan!")
         assertEqual "result 1" expectedResult actualResult
-      taskCount <- readTVarIO state.debugTaskCount
+      taskCount <- readTVarIO buildState.debugTaskCount
       assertEqual "task count 2" taskCount 1

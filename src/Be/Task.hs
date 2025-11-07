@@ -14,7 +14,7 @@ module Be.Task
   )
 where
 
-import Be.Build (TaskContext', taskContextRealize)
+import Be.Build (TaskState', taskStateRealize)
 import Be.Value (SomeValue (..), Value, fromSomeValue, fromSomeValue', toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.Char (toUpper)
@@ -50,28 +50,28 @@ class
 
   taskSing :: a
 
-  taskBuild :: proxy a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
+  taskBuild :: proxy a -> TaskState' -> TaskArgs a :->: IO (TaskResult a)
 
-taskRealize :: forall a proxy. Task a => proxy a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
-taskRealize _ taskContext = curryN \args -> do
+taskRealize :: forall a proxy. Task a => proxy a -> TaskState' -> TaskArgs a :->: IO (TaskResult a)
+taskRealize _ taskState = curryN \args -> do
   let argsToKey :: TupleArgs (TaskArgs a) -> TaskKey a
       argsToKey = coerce
   let valueToResult :: TaskValue a -> TaskResult a
       valueToResult = coerce
-  someValue <- taskContextRealize taskContext (toSomeValue (argsToKey args))
+  someValue <- taskStateRealize taskState (toSomeValue (argsToKey args))
   pure (valueToResult (fromSomeValue' someValue))
 
-taskHandler :: forall a proxy. Task a => proxy a -> TaskContext' -> TaskKey a -> IO (TaskValue a, Bool)
-taskHandler proxy taskContext key = do
+taskHandler :: forall a proxy. Task a => proxy a -> TaskState' -> TaskKey a -> IO (TaskValue a, Bool)
+taskHandler proxy taskState key = do
   let keyToArgs :: TaskKey a -> TupleArgs (TaskArgs a)
       keyToArgs = coerce
   let resultToValue :: TaskResult a -> TaskValue a
       resultToValue = coerce
-  result <- uncurryN (taskBuild proxy taskContext) (keyToArgs key)
+  result <- uncurryN (taskBuild proxy taskState) (keyToArgs key)
   let options = taskOptions @a
   pure (resultToValue result, options.volatile)
 
-realize :: Task a => a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
+realize :: Task a => a -> TaskState' -> TaskArgs a :->: IO (TaskResult a)
 realize sing = taskRealize (Identity sing)
 
 data TaskOptions = TaskOptions
@@ -95,8 +95,8 @@ registerTaskWith funName options = do
     TH.VarI _ typ _ -> pure typ
     _ -> fail "task: expected a function"
   (taskArgs, taskResult) <- case argsAndResult typ of
-    ([], _) -> fail "task: function must have at least one argument (TaskContext)"
-    (_taskContext : taskArgs, returnType) -> case unwrapIO returnType of
+    ([], _) -> fail "task: function must have at least one argument (TaskState)"
+    (_taskState : taskArgs, returnType) -> case unwrapIO returnType of
       Just taskResult -> pure (taskArgs, taskResult)
       Nothing -> fail "task: function must run in IO monad"
   sequence
@@ -207,7 +207,7 @@ discoverTasks = [|| do
   ||]
 
 data TaskHandler where
-  TaskHandler :: Task a => (TaskContext' -> TaskKey a -> IO (TaskValue a, Bool)) -> TaskHandler
+  TaskHandler :: Task a => (TaskState' -> TaskKey a -> IO (TaskValue a, Bool)) -> TaskHandler
 
 getTaskHandlers :: IO [TaskHandler]
 getTaskHandlers = do
@@ -218,14 +218,14 @@ getTaskHandlers = do
       toHandler (SomeDictOf proxy) = TaskHandler (taskHandler proxy)
   pure (map toHandler dicts)
 
-getTasks :: IO (TaskContext' -> SomeValue -> IO (SomeValue, Bool))
+getTasks :: IO (TaskState' -> SomeValue -> IO (SomeValue, Bool))
 getTasks = do
   taskHandlers <- getTaskHandlers
-  pure \taskContext someKey@(SomeValue t _) -> do
+  pure \taskState someKey@(SomeValue t _) -> do
     let tryHandler (TaskHandler handler) rest =
           case fromSomeValue someKey of
             Just key -> do
-              (value, volatile) <- handler taskContext key
+              (value, volatile) <- handler taskState key
               pure (toSomeValue value, volatile)
             Nothing -> rest
     let fallback = error $ "No task handler for `" <> show t <> "`"
