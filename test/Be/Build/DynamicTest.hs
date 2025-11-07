@@ -67,7 +67,6 @@ unit_build_system = do
       toBytes = encodeUtf8
 
   SQLite.withConnection ":memory:" \connection -> do
-    dbMigrate connection
 
     let tasks :: TaskState TestKey TestValue -> TestKey -> IO (TestValue, Bool)
         tasks taskState = \case
@@ -84,6 +83,8 @@ unit_build_system = do
             pure (value, volatile)
 
     buildState <- atomically $ newBuildState connection tasks
+    dbDrop connection
+    dbCreate connection
 
     let path = "/files"
 

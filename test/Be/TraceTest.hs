@@ -15,7 +15,8 @@ instance Value Text
 unit_trace_roundtrip :: Assertion
 unit_trace_roundtrip =
   SQLite.withConnection ":memory:" \connection -> do
-    dbMigrate connection
+    dbDrop connection
+    dbCreate connection
 
     let key = "password"
     let deps = HashMap.singleton "answer" (Hash 42)

@@ -2,7 +2,8 @@
 
 module Be.Trace
   ( Trace (..)
-  , dbMigrate
+  , dbDrop
+  , dbCreate
   , fetchTraces
   , insertTrace
   )
@@ -25,10 +26,15 @@ data Trace k v = Trace
   deriving stock (Generic, Eq, Show)
   deriving anyclass (Serialise)
 
-dbMigrate :: SQLite.Connection -> IO ()
-dbMigrate connection = SQLite.withTransaction connection do
+dbDrop :: SQLite.Connection -> IO ()
+dbDrop connection = SQLite.withTransaction connection do
+  SQLite.execute_ connection "drop table if exists traces"
+  SQLite.execute_ connection "drop table if exists trace_deps"
+
+dbCreate :: SQLite.Connection -> IO ()
+dbCreate connection = SQLite.withTransaction connection do
   SQLite.execute_ connection [iii|
-    create table if not exists traces (
+    create table traces (
       id integer primary key,
       key blob not null,
       value blob not null,
@@ -36,7 +42,7 @@ dbMigrate connection = SQLite.withTransaction connection do
     ) strict
   |]
   SQLite.execute_ connection [iii|
-    create table if not exists trace_deps (
+    create table trace_deps (
       trace_id integer not null references traces on delete cascade,
       dep_key blob not null,
       dep_value_hash blob not null,
@@ -44,24 +50,24 @@ dbMigrate connection = SQLite.withTransaction connection do
     ) strict
   |]
   SQLite.execute_ connection [iii|
-    create index if not exists idx_traces_key on traces(key)
+    create index idx_traces_key on traces(key)
   |]
   SQLite.execute_ connection [iii|
-    create trigger if not exists forbid_trace_update
+    create trigger forbid_trace_update
     before update on traces
     begin
       select raise(abort, 'traces are immutable');
     end
   |]
   SQLite.execute_ connection [iii|
-    create trigger if not exists forbid_trace_deps_update
+    create trigger forbid_trace_deps_update
     before update on trace_deps
     begin
       select raise(abort, 'trace dependencies are immutable');
     end
   |]
   SQLite.execute_ connection [iii|
-    create trigger if not exists forbid_trace_deps_delete
+    create trigger forbid_trace_deps_delete
     before delete on trace_deps
     when (select count(*) from traces where id = old.trace_id) > 0
     begin

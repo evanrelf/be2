@@ -67,7 +67,8 @@ unit_build_system = do
       toBytes = encodeUtf8
 
   SQLite.withConnection ":memory:" \connection -> do
-    dbMigrate connection
+    dbDrop connection
+    dbCreate connection
 
     let tasks :: TaskState TestKey TestValue -> TestKey -> IO (TestValue, Bool)
         tasks taskState = \case
