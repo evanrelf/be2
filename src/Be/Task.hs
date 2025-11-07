@@ -47,6 +47,47 @@ class
 
   taskBuild :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
 
+task :: TH.Name -> TH.Q [TH.Dec]
+task name = do
+  undefined
+
+-- TODO
+--
+-- GIVEN THIS INPUT CODE:
+--
+-- ```haskell
+-- greet :: TaskContext SomeValue SomeValue -> Text -> IO Text
+-- greet _taskContext name = pure ("Hello, " <> name <> "!")
+-- ```
+--
+-- CALLING THIS TEMPLATE HASKELL CODE:
+--
+-- ```haskell
+-- $(task 'greet)
+-- ```
+--
+-- SHOULD GENERATE THESE DECLARATIONS:
+--
+-- ```haskell
+-- data Greet = Greet
+--
+-- instance Task Greet where
+--   type TaskArgs _ = '[Text]
+--
+--   type TaskResult _ = Text
+--
+--   newtype TaskKey _ = GreetKey (TupleArgs (TaskArgs Greet))
+--     deriving stock (Generic, Show, Eq)
+--     deriving anyclass (Serialise, Hashable, Value)
+--
+--   newtype TaskValue _ = GreetValue (TaskResult Greet)
+--     deriving stock (Generic, Show, Eq)
+--     deriving anyclass (Serialise, Hashable, Value)
+--
+--   taskBuild :: proxy Greet -> TaskContext SomeValue SomeValue -> TaskArgs Greet :->: IO (TaskResult Greet)
+--   taskBuild _proxy = \_taskContext name -> pure ("Hello, " <> name <> "!")
+-- ```
+
 taskRegistry :: IORef (HashMap SomeTypeRep (SomeDict Task))
 taskRegistry = unsafePerformIO $ newIORef HashMap.empty
 {-# NOINLINE taskRegistry #-}
