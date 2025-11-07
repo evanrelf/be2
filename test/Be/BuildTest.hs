@@ -6,7 +6,7 @@ module Be.BuildTest where
 import Be.Build
 import Be.Hash (Hash (..))
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
-import Be.Value (Value, discoverValues, toSomeValue)
+import Be.Value (Value, discoverValues)
 import Codec.Serialise (Serialise)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
@@ -199,16 +199,16 @@ unit_existential_build_system = do
     tasks <- getTasks
 
     do
-      buildState <- atomically $ newBuildState connection tasks
+      buildState <- atomically $ newBuildState' connection tasks
       do
-        taskState <- atomically $ newTaskState buildState
-        actualResult <- taskStateRealize taskState (toSomeValue (Add1Key 1))
-        let expectedResult = toSomeValue (Add1Value 2)
+        taskState <- atomically $ newTaskState' buildState
+        actualResult <- realize Add1 taskState 1
+        let expectedResult = 2
         assertEqual "result 1" expectedResult actualResult
       do
-        taskState <- atomically $ newTaskState buildState
-        actualResult <- taskStateRealize taskState (toSomeValue (GreetKey "Evan"))
-        let expectedResult = toSomeValue (GreetValue "Hello, Evan!")
+        taskState <- atomically $ newTaskState' buildState
+        actualResult <- realize Greet taskState "Evan"
+        let expectedResult = "Hello, Evan!"
         assertEqual "result 1" expectedResult actualResult
       taskCount <- readTVarIO buildState.debugTaskCount
       assertEqual "task count 1" taskCount 3
@@ -217,13 +217,13 @@ unit_existential_build_system = do
       buildState <- atomically $ newBuildState connection tasks
       do
         taskState <- atomically $ newTaskState buildState
-        actualResult <- taskStateRealize taskState (toSomeValue (Add1Key 1))
-        let expectedResult = toSomeValue (Add1Value 2)
+        actualResult <- realize Add1 taskState 1
+        let expectedResult = 2
         assertEqual "result 1" expectedResult actualResult
       do
         taskState <- atomically $ newTaskState buildState
-        actualResult <- taskStateRealize taskState (toSomeValue (GreetKey "Evan"))
-        let expectedResult = toSomeValue (GreetValue "Hello, Evan!")
+        actualResult <- realize Greet taskState "Evan"
+        let expectedResult = "Hello, Evan!"
         assertEqual "result 1" expectedResult actualResult
       taskCount <- readTVarIO buildState.debugTaskCount
       assertEqual "task count 2" taskCount 1

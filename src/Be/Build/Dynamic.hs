@@ -4,12 +4,16 @@
 
 module Be.Build.Dynamic
   ( BuildState'
+  , Static.BuildState (..)
   , TaskState'
+  , Static.TaskState (..)
+  , newBuildState'
+  , newTaskState'
+  , realize
 
   , Task (..)
   , TaskOptions (..)
   , defaultTaskOptions
-  , realize
 
   , discoverTasks
   , getTasks
@@ -23,6 +27,7 @@ import Be.Value (SomeValue (..), Value, fromSomeValue, fromSomeValue', toSomeVal
 import Codec.Serialise (Serialise)
 import Data.Char (toUpper)
 import Data.HashMap.Strict qualified as HashMap
+import Database.SQLite.Simple qualified as SQLite
 import DiscoverInstances (SomeDict, SomeDictOf (..), discoverInstances)
 import Language.Haskell.TH qualified as TH
 import Language.Haskell.TH.Syntax (Lift)
@@ -34,6 +39,15 @@ import VarArgs ((:->:))
 type BuildState' = Static.BuildState SomeValue SomeValue
 
 type TaskState' = Static.TaskState SomeValue SomeValue
+
+newBuildState'
+  :: SQLite.Connection
+  -> (TaskState' -> SomeValue -> IO (SomeValue, Bool))
+  -> STM BuildState'
+newBuildState' = Static.newBuildState
+
+newTaskState' :: BuildState' -> STM TaskState'
+newTaskState' = Static.newTaskState
 
 type Task :: Type -> Constraint
 class
