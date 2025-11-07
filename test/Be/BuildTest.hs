@@ -188,7 +188,7 @@ greet taskContext name = do
 registerTask 'greet
 
 data TaskHandler where
-  TaskHandler :: Task a => (TaskContext' -> TaskKey a -> IO (TaskValue a, Bool)) -> TaskHandler
+  TaskHandler :: Task a => (TaskKey a -> IO (TaskValue a, Bool)) -> TaskHandler
 
 unit_existential_build_system :: Assertion
 unit_existential_build_system = do
@@ -198,33 +198,33 @@ unit_existential_build_system = do
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
-    let tasksHandler :: [TaskHandler] -> TaskContext' -> SomeValue -> IO (SomeValue, Bool)
-        tasksHandler handlers taskContext someKey@(SomeValue t _) =
+    let tasksHandler :: [TaskHandler] -> SomeValue -> IO (SomeValue, Bool)
+        tasksHandler handlers someKey@(SomeValue t _) =
           foldr tryHandler fallback handlers
           where
           tryHandler (TaskHandler handler) rest =
             case fromSomeValue someKey of
               Just key -> do
-                (value, volatile) <- handler taskContext key
+                (value, volatile) <- handler key
                 pure (toSomeValue value, volatile)
               Nothing -> rest
 
           fallback = error $ "No task handler for `" <> show t <> "`"
 
     let tasks :: TaskContext' -> SomeValue -> IO (SomeValue, Bool)
-        tasks = tasksHandler
-          [ TaskHandler \taskContext (Add1Key (Identity n)) -> do
+        tasks taskContext = tasksHandler
+          [ TaskHandler \(Add1Key (Identity n)) -> do
               m <- taskBuild (Proxy @Add1) taskContext n
               let value = Add1Value m
               let options = taskOptions @Add1
               pure (value, options.volatile)
-          , TaskHandler \taskContext (YellKey (Identity message)) -> do
+          , TaskHandler \(YellKey (Identity message)) -> do
               m <- taskBuild (Proxy @Yell) taskContext message
               let value = YellValue m
               let options = taskOptions @Yell
               pure (value, options.volatile)
 
-          , TaskHandler \taskContext (GreetKey (Identity name)) -> do
+          , TaskHandler \(GreetKey (Identity name)) -> do
               greeting <- taskBuild (Proxy @Greet) taskContext name
               let value = GreetValue greeting
               let options = taskOptions @Greet
