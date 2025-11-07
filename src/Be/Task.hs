@@ -154,13 +154,6 @@ taskWithOptions funName options = do
             , TH.DerivClause (Just TH.AnyclassStrategy) (map TH.ConT [''Serialise, ''Hashable, ''Value])
             ]
 
-    -- `taskBuild :: ...`
-    proxyVar <- TH.newName "proxy"
-    taskBuildSig <- TH.sigD (TH.mkName "taskBuild")
-      [t| $(TH.varT proxyVar) $(pure dataType)
-          -> TaskContext SomeValue SomeValue
-          -> TaskArgs $(pure dataType) :->: IO (TaskResult $(pure dataType)) |]
-
     -- `taskBuild = ...`
     taskBuildFun <- TH.funD (TH.mkName "taskBuild")
       [TH.clause [TH.wildP] (TH.normalB (TH.varE funName)) []]
@@ -174,7 +167,6 @@ taskWithOptions funName options = do
       , taskResultInst
       , taskKeyInst
       , taskValueInst
-      , taskBuildSig
       , taskBuildFun
       , taskOptionsFun
       ]
