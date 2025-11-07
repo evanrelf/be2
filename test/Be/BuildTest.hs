@@ -213,22 +213,9 @@ unit_existential_build_system = do
 
     let tasks :: TaskContext' -> SomeValue -> IO (SomeValue, Bool)
         tasks taskContext = tasksHandler
-          [ TaskHandler \(Add1Key (Identity n)) -> do
-              m <- taskBuild (Proxy @Add1) taskContext n
-              let value = Add1Value m
-              let options = taskOptions @Add1
-              pure (value, options.volatile)
-          , TaskHandler \(YellKey (Identity message)) -> do
-              m <- taskBuild (Proxy @Yell) taskContext message
-              let value = YellValue m
-              let options = taskOptions @Yell
-              pure (value, options.volatile)
-
-          , TaskHandler \(GreetKey (Identity name)) -> do
-              greeting <- taskBuild (Proxy @Greet) taskContext name
-              let value = GreetValue greeting
-              let options = taskOptions @Greet
-              pure (value, options.volatile)
+          [ TaskHandler (taskHandler (Proxy @Add1) taskContext)
+          , TaskHandler (taskHandler (Proxy @Yell) taskContext)
+          , TaskHandler (taskHandler (Proxy @Greet) taskContext)
           ]
 
     do

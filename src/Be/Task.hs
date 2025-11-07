@@ -62,6 +62,16 @@ class
     someValue <- taskContextRealize taskContext (toSomeValue (argsToKey args))
     pure (valueToResult (fromSomeValue' someValue))
 
+  taskHandler :: proxy a -> TaskContext' -> TaskKey a -> IO (TaskValue a, Bool)
+  taskHandler proxy taskContext key = do
+    let keyToArgs :: TaskKey a -> TupleArgs (TaskArgs a)
+        keyToArgs = coerce
+    let resultToValue :: TaskResult a -> TaskValue a
+        resultToValue = coerce
+    result <- uncurryN (taskBuild proxy taskContext) (keyToArgs key)
+    let options = taskOptions @a
+    pure (resultToValue result, options.volatile)
+
 realize :: Task a => a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
 realize sing = taskRealize (Identity sing)
 
