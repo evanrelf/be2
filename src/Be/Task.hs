@@ -7,6 +7,9 @@ module Be.Task
   , discoverTasks
   , CurryN (..)
   , task
+  , taskWithOptions
+  , TaskOptions (..)
+  , defaultTaskOptions
   )
 where
 
@@ -17,6 +20,8 @@ import Data.Char (toUpper)
 import Data.HashMap.Strict qualified as HashMap
 import DiscoverInstances (SomeDict, SomeDictOf (..), discoverInstances)
 import Language.Haskell.TH qualified as TH
+import Language.Haskell.TH.Syntax (Lift)
+import Language.Haskell.TH.Syntax qualified as TH
 import System.IO.Unsafe (unsafePerformIO)
 import Type.Reflection (SomeTypeRep, someTypeRep)
 import VarArgs ((:->:))
@@ -39,6 +44,11 @@ class
 
   data TaskValue a :: Type
 
+  taskOptions :: TaskOptions
+  taskOptions = defaultTaskOptions
+
+  taskBuild :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
+
   taskRealize :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
   taskRealize _ taskContext = curryN \args -> do
     let argsToKey :: TupleArgs (TaskArgs a) -> TaskKey a
@@ -48,10 +58,22 @@ class
     someValue <- taskContextRealize taskContext (toSomeValue (argsToKey args))
     pure (valueToResult (fromSomeValue' someValue))
 
-  taskBuild :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
+data TaskOptions = TaskOptions
+  { volatile :: Bool
+  }
+  deriving stock (Lift)
+
+defaultTaskOptions :: TaskOptions
+defaultTaskOptions =
+  TaskOptions
+    { volatile = False
+    }
 
 task :: TH.Name -> TH.Q [TH.Dec]
-task funName = do
+task funName = taskWithOptions funName defaultTaskOptions
+
+taskWithOptions :: TH.Name -> TaskOptions -> TH.Q [TH.Dec]
+taskWithOptions funName options = do
   info <- TH.reify funName
   typ <- case info of
     TH.VarI _ typ _ -> pure typ
@@ -143,6 +165,10 @@ task funName = do
     taskBuildFun <- TH.funD (TH.mkName "taskBuild")
       [TH.clause [TH.wildP] (TH.normalB (TH.varE funName)) []]
 
+    -- `taskOptions = ...`
+    taskOptionsFun <- TH.funD (TH.mkName "taskOptions")
+      [TH.clause [] (TH.normalB (TH.lift options)) []]
+
     pure $ TH.InstanceD Nothing [] instanceHead
       [ taskArgsInst
       , taskResultInst
@@ -150,6 +176,7 @@ task funName = do
       , taskValueInst
       , taskBuildSig
       , taskBuildFun
+      , taskOptionsFun
       ]
 
 taskRegistry :: IORef (HashMap SomeTypeRep (SomeDict Task))
