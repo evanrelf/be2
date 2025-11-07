@@ -5,7 +5,7 @@ module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
-import Be.Task (Task (..), TaskOptions (..), defaultTaskOptions, discoverTasks, realize, registerTask, registerTaskWith)
+import Be.Task (Task (..), TaskHandler (..), TaskOptions (..), defaultTaskOptions, discoverTasks, realize, registerTask, registerTaskWith)
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
 import Be.Value (SomeValue (..), Value, discoverValues, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
@@ -187,9 +187,6 @@ greet taskContext name = do
 
 registerTask 'greet
 
-data TaskHandler where
-  TaskHandler :: Task a => (TaskKey a -> IO (TaskValue a, Bool)) -> TaskHandler
-
 unit_existential_build_system :: Assertion
 unit_existential_build_system = do
   $$discoverValues
@@ -198,24 +195,24 @@ unit_existential_build_system = do
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
-    let tasksHandler :: [TaskHandler] -> SomeValue -> IO (SomeValue, Bool)
-        tasksHandler handlers someKey@(SomeValue t _) =
+    let tasksHandler :: [TaskHandler] -> TaskContext' -> SomeValue -> IO (SomeValue, Bool)
+        tasksHandler handlers taskContext someKey@(SomeValue t _) =
           foldr tryHandler fallback handlers
           where
           tryHandler (TaskHandler handler) rest =
             case fromSomeValue someKey of
               Just key -> do
-                (value, volatile) <- handler key
+                (value, volatile) <- handler taskContext key
                 pure (toSomeValue value, volatile)
               Nothing -> rest
 
           fallback = error $ "No task handler for `" <> show t <> "`"
 
     let tasks :: TaskContext' -> SomeValue -> IO (SomeValue, Bool)
-        tasks taskContext = tasksHandler
-          [ TaskHandler (taskHandler (Proxy @Add1) taskContext)
-          , TaskHandler (taskHandler (Proxy @Yell) taskContext)
-          , TaskHandler (taskHandler (Proxy @Greet) taskContext)
+        tasks = tasksHandler
+          [ TaskHandler (taskHandler (Proxy @Add1))
+          , TaskHandler (taskHandler (Proxy @Yell))
+          , TaskHandler (taskHandler (Proxy @Greet))
           ]
 
     do
