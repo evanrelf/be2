@@ -12,6 +12,8 @@ module Be.Task
   , registerTaskWith
   , TaskOptions (..)
   , defaultTaskOptions
+  , TaskHandler (..)
+  , getTaskHandlers
   )
 where
 
@@ -207,11 +209,17 @@ discoverTasks = [|| do
     atomicModifyIORef' taskRegistry \tr -> (HashMap.union tasks tr, ())
   ||]
 
-lookupTask :: SomeTypeRep -> Maybe (SomeDict Task)
-lookupTask t = unsafePerformIO do
-  vr <- readIORef taskRegistry
-  pure $ HashMap.lookup t vr
-{-# NOINLINE lookupTask #-}
+data TaskHandler where
+  TaskHandler :: Task a => (TaskContext' -> TaskKey a -> IO (TaskValue a, Bool)) -> TaskHandler
+
+getTaskHandlers :: IO [TaskHandler]
+getTaskHandlers = do
+  tr <- readIORef taskRegistry
+  let dicts :: [SomeDict Task]
+      dicts = HashMap.elems tr
+  let toHandler :: SomeDict Task -> TaskHandler
+      toHandler (SomeDictOf proxy) = TaskHandler (taskHandler proxy)
+  pure (map toHandler dicts)
 
 type CurryN :: [Type] -> Constraint
 class CurryN args where
