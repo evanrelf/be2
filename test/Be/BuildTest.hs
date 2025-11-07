@@ -5,7 +5,6 @@ module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
-import Be.Task (Task (..), TaskOptions (..), defaultTaskOptions, discoverTasks, getTasks, realize, registerTask, registerTaskWith)
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
 import Be.Value (Value, discoverValues, toSomeValue)
 import Codec.Serialise (Serialise)

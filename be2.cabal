@@ -61,7 +61,6 @@ library
     , Be.Format
     , Be.Hash
     , Be.Lint
-    , Be.Task
     , Be.Trace
     , Be.Value
 
