@@ -4,10 +4,12 @@
 module Be.Task
   ( Task (..)
   , discoverTasks
+  , ArgsToKey
   )
 where
 
-import Be.Value (Value)
+import Be.Build (TaskContext)
+import Be.Value (SomeValue, Value)
 import Data.HashMap.Strict qualified as HashMap
 import DiscoverInstances (SomeDict, SomeDictOf (..), discoverInstances)
 import Language.Haskell.TH qualified as TH
@@ -27,8 +29,8 @@ class
   type TaskResult a :: Type
   data TaskKey a :: Type
   data TaskValue a :: Type
-  taskRealize :: proxy a -> TaskArgs a :->: IO (TaskResult a)
-  taskBuild :: proxy a -> TaskArgs a :->: IO (TaskResult a)
+  taskRealize :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
+  taskBuild :: proxy a -> TaskContext SomeValue SomeValue -> TaskArgs a :->: IO (TaskResult a)
 
 taskRegistry :: IORef (HashMap SomeTypeRep (SomeDict Task))
 taskRegistry = unsafePerformIO $ newIORef HashMap.empty
@@ -52,10 +54,9 @@ lookupTask t = unsafePerformIO do
 
 -- TODO: Need a value-level function to convert for use in `taskRealize`.
 type ArgsToKey :: [Type] -> Type
-type family ArgsToKey xs = r | r -> xs where
-  ArgsToKey '[] = () -- Weird but I'll allow it for now
-  ArgsToKey '[x1] = Identity x1 -- `Solo` is missing instances
+type family ArgsToKey xs where
+  ArgsToKey '[] = ()
+  ArgsToKey '[x1] = x1
   ArgsToKey '[x1, x2] = (x1, x2)
   ArgsToKey '[x1, x2, x3] = (x1, x2, x3)
   ArgsToKey '[x1, x2, x3, x4] = (x1, x2, x3, x4)
-  -- Ideally no tasks have more than 4 arguments...

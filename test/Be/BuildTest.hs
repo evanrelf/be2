@@ -1,11 +1,13 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Be.BuildTest where
 
 import Be.Build
 import Be.Hash (Hash (..))
+import Be.Task (ArgsToKey, Task (..))
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
-import Be.Value (SomeValue, Value, discoverValues, fromSomeValue, toSomeValue)
+import Be.Value (SomeValue, Value, discoverValues, fromSomeValue, fromSomeValue', toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
@@ -185,24 +187,28 @@ add1 taskContext n = do
 taskAdd1 :: TaskContext SomeValue SomeValue -> Int -> IO Int
 taskAdd1 _taskContext n = pure (n + 1)
 
-data ExistsKey_Greet = ExistsKey_Greet Text
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass (Serialise, Hashable, Value)
+data Greet = Greet
 
-data ExistsValue_Greet = ExistsValue_Greet Text
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass (Serialise, Hashable, Value)
+instance Task Greet where
+  type TaskArgs _ = '[Text]
 
-greet :: TaskContext SomeValue SomeValue -> Text -> IO Text
-greet taskContext name = do
-  let key = ExistsKey_Greet name
-  value <- taskContextRealize taskContext (toSomeValue key)
-  case fromSomeValue value of
-    Just (ExistsValue_Greet greeting) -> pure greeting
-    _ -> error $ "unexpected: " <> show value
+  type TaskResult _ = Text
 
-taskGreet :: TaskContext SomeValue SomeValue -> Text -> IO Text
-taskGreet _taskContext name = pure ("Hello, " <> name <> "!")
+  newtype TaskKey _ = GreetKey (ArgsToKey (TaskArgs Greet))
+    deriving stock (Generic, Show, Eq)
+    deriving anyclass (Serialise, Hashable, Value)
+
+  newtype TaskValue _ = GreetValue (TaskResult Greet)
+    deriving stock (Generic, Show, Eq)
+    deriving anyclass (Serialise, Hashable, Value)
+
+  taskRealize _ = \taskContext name -> do
+    someValue <- taskContextRealize taskContext (toSomeValue (GreetKey name))
+    case fromSomeValue' someValue of
+      GreetValue greeting -> pure greeting
+
+  taskBuild _ = \_taskContext name ->
+    pure ("Hello, " <> name <> "!")
 
 unit_existential_build_system :: Assertion
 unit_existential_build_system = do
@@ -219,9 +225,9 @@ unit_existential_build_system = do
               let volatile = False
               pure (value, volatile)
 
-          | Just (ExistsKey_Greet name) <- fromSomeValue someValue = do
-              greeting <- taskGreet taskContext name
-              let value = toSomeValue (ExistsValue_Greet greeting)
+          | Just (GreetKey name) <- fromSomeValue someValue = do
+              greeting <- taskBuild (Proxy @Greet) taskContext name
+              let value = toSomeValue (GreetValue greeting)
               let volatile = False
               pure (value, volatile)
 
@@ -234,8 +240,8 @@ unit_existential_build_system = do
         let expectedResult = toSomeValue (ExistsValue_Add1 2)
         assertEqual "result 1" expectedResult actualResult
       do
-        actualResult <- stateRealize state (toSomeValue (ExistsKey_Greet "Evan"))
-        let expectedResult = toSomeValue (ExistsValue_Greet "Hello, Evan!")
+        actualResult <- stateRealize state (toSomeValue (GreetKey "Evan"))
+        let expectedResult = toSomeValue (GreetValue "Hello, Evan!")
         assertEqual "result 1" expectedResult actualResult
       taskCount <- readTVarIO state.debugTaskCount
       assertEqual "task count 1" taskCount 2
@@ -247,8 +253,8 @@ unit_existential_build_system = do
         let expectedResult = toSomeValue (ExistsValue_Add1 2)
         assertEqual "result 1" expectedResult actualResult
       do
-        actualResult <- stateRealize state (toSomeValue (ExistsKey_Greet "Evan"))
-        let expectedResult = toSomeValue (ExistsValue_Greet "Hello, Evan!")
+        actualResult <- stateRealize state (toSomeValue (GreetKey "Evan"))
+        let expectedResult = toSomeValue (GreetValue "Hello, Evan!")
         assertEqual "result 1" expectedResult actualResult
       taskCount <- readTVarIO state.debugTaskCount
       assertEqual "task count 2" taskCount 0
