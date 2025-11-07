@@ -7,7 +7,7 @@ import Be.Build
 import Be.Hash (Hash (..))
 import Be.Task (Task (..), TaskOptions (..), defaultTaskOptions, discoverTasks, realize, registerTask, registerTaskWith)
 import Be.Trace (Trace (..), dbMigrate, fetchTraces)
-import Be.Value (SomeValue, Value, discoverValues, fromSomeValue, toSomeValue)
+import Be.Value (SomeValue (..), Value, discoverValues, fromSomeValue, toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
@@ -187,6 +187,9 @@ greet taskContext name = do
 
 registerTask 'greet
 
+data TaskHandler where
+  TaskHandler :: Task a => (TaskContext' -> TaskKey a -> IO (TaskValue a, Bool)) -> TaskHandler
+
 unit_existential_build_system :: Assertion
 unit_existential_build_system = do
   $$discoverValues
@@ -195,27 +198,38 @@ unit_existential_build_system = do
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
+    let tasksHandler :: [TaskHandler] -> TaskContext' -> SomeValue -> IO (SomeValue, Bool)
+        tasksHandler handlers taskContext someKey@(SomeValue t _) =
+          foldr tryHandler fallback handlers
+          where
+          tryHandler (TaskHandler handler) rest =
+            case fromSomeValue someKey of
+              Just key -> do
+                (value, volatile) <- handler taskContext key
+                pure (toSomeValue value, volatile)
+              Nothing -> rest
+
+          fallback = error $ "No task handler for `" <> show t <> "`"
+
     let tasks :: TaskContext' -> SomeValue -> IO (SomeValue, Bool)
-        tasks taskContext someValue
-          | Just (Add1Key (Identity n)) <- fromSomeValue someValue = do
+        tasks = tasksHandler
+          [ TaskHandler \taskContext (Add1Key (Identity n)) -> do
               m <- taskBuild (Proxy @Add1) taskContext n
-              let value = toSomeValue (Add1Value m)
+              let value = Add1Value m
               let options = taskOptions @Add1
               pure (value, options.volatile)
-
-          | Just (YellKey (Identity message)) <- fromSomeValue someValue = do
+          , TaskHandler \taskContext (YellKey (Identity message)) -> do
               m <- taskBuild (Proxy @Yell) taskContext message
-              let value = toSomeValue (YellValue m)
+              let value = YellValue m
               let options = taskOptions @Yell
               pure (value, options.volatile)
 
-          | Just (GreetKey (Identity name)) <- fromSomeValue someValue = do
+          , TaskHandler \taskContext (GreetKey (Identity name)) -> do
               greeting <- taskBuild (Proxy @Greet) taskContext name
-              let value = toSomeValue (GreetValue greeting)
+              let value = GreetValue greeting
               let options = taskOptions @Greet
               pure (value, options.volatile)
-
-          | otherwise = error $ "unexpected: " <> show someValue
+          ]
 
     do
       state <- atomically $ newState connection tasks
