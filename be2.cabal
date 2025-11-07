@@ -46,7 +46,6 @@ library
   build-depends:
     , ChibiHash
     , discover-instances
-    , optics-core
     , optparse-applicative
     , serialise
     , sqlite-simple
