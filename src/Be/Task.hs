@@ -1,5 +1,4 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE RequiredTypeArguments #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
@@ -53,24 +52,24 @@ class
 
   taskBuild :: proxy a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
 
-  taskRealize :: proxy a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
-  taskRealize _ taskContext = curryN \args -> do
-    let argsToKey :: TupleArgs (TaskArgs a) -> TaskKey a
-        argsToKey = coerce
-    let valueToResult :: TaskValue a -> TaskResult a
-        valueToResult = coerce
-    someValue <- taskContextRealize taskContext (toSomeValue (argsToKey args))
-    pure (valueToResult (fromSomeValue' someValue))
+taskRealize :: forall a proxy. Task a => proxy a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
+taskRealize _ taskContext = curryN \args -> do
+  let argsToKey :: TupleArgs (TaskArgs a) -> TaskKey a
+      argsToKey = coerce
+  let valueToResult :: TaskValue a -> TaskResult a
+      valueToResult = coerce
+  someValue <- taskContextRealize taskContext (toSomeValue (argsToKey args))
+  pure (valueToResult (fromSomeValue' someValue))
 
-  taskHandler :: proxy a -> TaskContext' -> TaskKey a -> IO (TaskValue a, Bool)
-  taskHandler proxy taskContext key = do
-    let keyToArgs :: TaskKey a -> TupleArgs (TaskArgs a)
-        keyToArgs = coerce
-    let resultToValue :: TaskResult a -> TaskValue a
-        resultToValue = coerce
-    result <- uncurryN (taskBuild proxy taskContext) (keyToArgs key)
-    let options = taskOptions @a
-    pure (resultToValue result, options.volatile)
+taskHandler :: forall a proxy. Task a => proxy a -> TaskContext' -> TaskKey a -> IO (TaskValue a, Bool)
+taskHandler proxy taskContext key = do
+  let keyToArgs :: TaskKey a -> TupleArgs (TaskArgs a)
+      keyToArgs = coerce
+  let resultToValue :: TaskResult a -> TaskValue a
+      resultToValue = coerce
+  result <- uncurryN (taskBuild proxy taskContext) (keyToArgs key)
+  let options = taskOptions @a
+  pure (resultToValue result, options.volatile)
 
 realize :: Task a => a -> TaskContext' -> TaskArgs a :->: IO (TaskResult a)
 realize sing = taskRealize (Identity sing)
