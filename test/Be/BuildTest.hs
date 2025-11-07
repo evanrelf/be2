@@ -168,12 +168,12 @@ unit_build_system = do
 
     pure ()
 
-add1 :: TaskContext SomeValue SomeValue -> Int -> IO Int
+add1 :: TaskContext' -> Int -> IO Int
 add1 _taskContext n = pure (n + 1)
 
 task 'add1
 
-greet :: TaskContext SomeValue SomeValue -> Text -> IO Text
+greet :: TaskContext' -> Text -> IO Text
 greet _taskContext name = pure ("Hello, " <> name <> "!")
 
 task 'greet
@@ -185,7 +185,7 @@ unit_existential_build_system = do
   SQLite.withConnection ":memory:" \connection -> do
     dbMigrate connection
 
-    let tasks :: TaskContext SomeValue SomeValue -> SomeValue -> IO (SomeValue, Bool)
+    let tasks :: TaskContext' -> SomeValue -> IO (SomeValue, Bool)
         tasks taskContext someValue
           | Just (Add1Key (Identity n)) <- fromSomeValue someValue = do
               m <- taskBuild (Proxy @Add1) taskContext n

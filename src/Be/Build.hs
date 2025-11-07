@@ -6,12 +6,14 @@ module Be.Build
   , stateRealize
   , TaskContext (..)
   , taskContextRealize
+  , State'
+  , TaskContext'
   )
 where
 
 import Be.Hash (Hash, hash)
 import Be.Trace (Trace (..), fetchTraces, insertTrace)
-import Be.Value (Value)
+import Be.Value (SomeValue, Value)
 import Control.Exception (assert)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet
@@ -119,6 +121,10 @@ taskContextRealize taskContext key = do
   value <- stateRealize taskContext.state key
   atomically $ modifyTVar' taskContext.deps $ HashMap.insert key (hash value)
   pure value
+
+type State' = State SomeValue SomeValue
+
+type TaskContext' = TaskContext SomeValue SomeValue
 
 allConcurrently
   :: (Foldable f, MonadUnliftIO m)
