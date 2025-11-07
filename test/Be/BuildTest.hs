@@ -191,14 +191,14 @@ unit_existential_build_system = do
           | Just (Add1Key (Identity n)) <- fromSomeValue someValue = do
               m <- taskBuild (Proxy @Add1) taskContext n
               let value = toSomeValue (Add1Value m)
-              let volatile = False
-              pure (value, volatile)
+              let options = taskOptions @Add1
+              pure (value, options.volatile)
 
           | Just (GreetKey (Identity name)) <- fromSomeValue someValue = do
               greeting <- taskBuild (Proxy @Greet) taskContext name
               let value = toSomeValue (GreetValue greeting)
-              let volatile = False
-              pure (value, volatile)
+              let options = taskOptions @Greet
+              pure (value, options.volatile)
 
           | otherwise = error $ "unexpected: " <> show someValue
 
