@@ -207,23 +207,29 @@ type CurryN :: [Type] -> Constraint
 class CurryN args where
   type TupleArgs args = (r :: Type) | r -> args
   curryN :: (TupleArgs args -> result) -> (args :->: result)
+  uncurryN :: (args :->: result) -> (TupleArgs args -> result)
 
 instance CurryN '[] where
   type TupleArgs '[] = ()
   curryN f = f ()
+  uncurryN f () = f
 
 instance CurryN '[a] where
   type TupleArgs '[a] = Identity a
   curryN f a = f (Identity a)
+  uncurryN f (Identity a) = f a
 
 instance CurryN '[a, b] where
   type TupleArgs '[a, b] = (a, b)
   curryN f a b = f (a, b)
+  uncurryN f (a, b) = f a b
 
 instance CurryN '[a, b, c] where
   type TupleArgs '[a, b, c] = (a, b, c)
   curryN f a b c = f (a, b, c)
+  uncurryN f (a, b, c) = f a b c
 
 instance CurryN '[a, b, c, d] where
   type TupleArgs '[a, b, c, d] = (a, b, c, d)
   curryN f a b c d = f (a, b, c, d)
+  uncurryN f (a, b, c, d) = f a b c d
