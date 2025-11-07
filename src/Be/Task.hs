@@ -15,16 +15,14 @@ import System.IO.Unsafe (unsafePerformIO)
 import Type.Reflection (SomeTypeRep, someTypeRep)
 import VarArgs ((:->:))
 
-type TaskContext :: Type -> Constraint
-type TaskContext a =
+type Task :: Type -> Constraint
+class
   ( Typeable a
   , Value (TaskKey a)
   , Value (TaskValue a)
   , Coercible (TaskKey a) (ArgsToKey (TaskArgs a))
   , Coercible (TaskValue a) (TaskResult a)
-  )
-
-class TaskContext a => Task a where
+  ) => Task a where
   type TaskArgs a :: [Type]
   type TaskResult a :: Type
   data TaskKey a :: Type
