@@ -236,7 +236,7 @@ getTasks = do
               (value, volatile) <- handler key
               pure (toSomeValue value, volatile)
             Nothing -> rest
-    let fallback = error $ "No task handler for `" <> show t <> "`"
+    let fallback = error $ "No task handler for `" <> show t <> "`; did you register `Task` instances?"
     foldr tryHandler fallback taskHandlers
 
 type CurryN :: [Type] -> Constraint

@@ -44,7 +44,7 @@ instance Serialise SomeValue where
     t <- decode
     case unsafeLookupInstance @Value t of
       Just (SomeDictOf (Proxy @a)) -> SomeValue (typeRep @a) <$> decode @a
-      Nothing -> fail $ "Type `" <> show t <> "` missing from value registry"
+      Nothing -> fail $ "Type `" <> show t <> "` missing from value registry; did you register `Value` instances?"
 
 toSomeValue :: Value a => a -> SomeValue
 toSomeValue x = SomeValue typeRep x
