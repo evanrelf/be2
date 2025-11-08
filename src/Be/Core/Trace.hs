@@ -1,6 +1,6 @@
 {-# LANGUAGE QuasiQuotes #-}
 
-module Be.Trace
+module Be.Core.Trace
   ( Trace (..)
   , dbDrop
   , dbCreate
@@ -9,8 +9,8 @@ module Be.Trace
   )
 where
 
-import Be.Hash (Hash (..), hash)
-import Be.Value (Value)
+import Be.Core.Hash (Hash (..), hash)
+import Be.Core.Value (Value)
 import Codec.Serialise (Serialise, deserialise, serialise)
 import Control.Exception (assert, onException)
 import Data.HashMap.Strict qualified as HashMap

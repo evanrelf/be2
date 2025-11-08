@@ -1,12 +1,12 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Be.Build.DynamicTest where
+module Be.Core.Build.DynamicTest where
 
-import Be.Build.Dynamic
-import Be.Hash (Hash (..))
-import Be.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
-import Be.Value (SomeValue, Value, discoverValues, toSomeValue)
+import Be.Core.Build.Dynamic
+import Be.Core.Hash (Hash (..))
+import Be.Core.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
+import Be.Core.Value (SomeValue, Value, discoverValues, toSomeValue)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (concat, readFile)

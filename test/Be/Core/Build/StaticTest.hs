@@ -1,12 +1,12 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Be.Build.StaticTest where
+module Be.Core.Build.StaticTest where
 
-import Be.Build.Static
-import Be.Hash (Hash (..))
-import Be.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
-import Be.Value (Value)
+import Be.Core.Build.Static
+import Be.Core.Hash (Hash (..))
+import Be.Core.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
+import Be.Core.Value (Value)
 import Codec.Serialise (Serialise)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite

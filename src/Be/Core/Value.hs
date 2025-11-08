@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskellQuotes #-}
 {-# LANGUAGE TypeAbstractions #-}
 
-module Be.Value
+module Be.Core.Value
   ( Value
   , discoverValues
   , SomeValue (..)

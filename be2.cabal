@@ -55,14 +55,14 @@ library
     , varargs
   exposed-modules:
     , Be
-    , Be.Build
-    , Be.Build.Dynamic
-    , Be.Build.Static
+    , Be.Core.Build
+    , Be.Core.Build.Dynamic
+    , Be.Core.Build.Static
+    , Be.Core.Hash
+    , Be.Core.Trace
+    , Be.Core.Value
     , Be.Format
-    , Be.Hash
     , Be.Lint
-    , Be.Trace
-    , Be.Value
 
 executable be2
   import:
@@ -88,6 +88,6 @@ test-suite test
     , tasty-hedgehog
     , tasty-hunit
   other-modules:
-    Be.Build.DynamicTest
-    Be.Build.StaticTest
-    Be.TraceTest
+    Be.Core.Build.DynamicTest
+    Be.Core.Build.StaticTest
+    Be.Core.TraceTest

@@ -1,4 +1,4 @@
-module Be.Hash
+module Be.Core.Hash
   ( Hash (..)
   , hash
   )

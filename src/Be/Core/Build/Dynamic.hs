@@ -3,7 +3,7 @@
 {-# LANGUAGE TypeAbstractions #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
-module Be.Build.Dynamic
+module Be.Core.Build.Dynamic
   ( BuildState'
   , Static.BuildState (..)
   , TaskState'
@@ -28,8 +28,8 @@ module Be.Build.Dynamic
   )
 where
 
-import Be.Build.Static qualified as Static
-import Be.Value (SomeValue (..), Value, fromSomeValue, fromSomeValue', toSomeValue)
+import Be.Core.Build.Static qualified as Static
+import Be.Core.Value (SomeValue (..), Value, fromSomeValue, fromSomeValue', toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.Char (toUpper)
 import Data.HashMap.Strict qualified as HashMap

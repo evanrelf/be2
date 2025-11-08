@@ -1,6 +1,6 @@
 {-# LANGUAGE MultiWayIf #-}
 
-module Be.Build.Static
+module Be.Core.Build.Static
   ( BuildState (..)
   , newBuildState
   , TaskState (..)
@@ -9,9 +9,9 @@ module Be.Build.Static
   )
 where
 
-import Be.Hash (Hash, hash)
-import Be.Trace (Trace (..), fetchTraces, insertTrace)
-import Be.Value (Value)
+import Be.Core.Hash (Hash, hash)
+import Be.Core.Trace (Trace (..), fetchTraces, insertTrace)
+import Be.Core.Value (Value)
 import Control.Exception (assert)
 import Data.HashMap.Strict qualified as HashMap
 import Data.HashSet qualified as HashSet

@@ -1,10 +1,10 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Be.TraceTest where
+module Be.Core.TraceTest where
 
-import Be.Hash (Hash (..))
-import Be.Trace
-import Be.Value (Value)
+import Be.Core.Hash (Hash (..))
+import Be.Core.Trace
+import Be.Core.Value (Value)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (trace)
