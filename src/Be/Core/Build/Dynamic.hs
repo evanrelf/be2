@@ -31,24 +31,19 @@ import Language.Haskell.TH.Syntax (Lift)
 import Language.Haskell.TH.Syntax qualified as TH
 import VarArgs ((:->:))
 
-type TaskState' = Static.TaskState SomeValue SomeValue
+type TaskState = Static.TaskState SomeValue SomeValue
 
-newTaskState' :: SQLite.Connection -> IO TaskState'
-newTaskState' connection = do
-  tasks <- getTasks
-  buildState <- atomically $ Static.newBuildState connection (\taskState someKey -> unwrapBuild (tasks someKey) taskState)
-  taskState <- atomically $ Static.newTaskState buildState
-  pure taskState
-
-newtype Build a = Build (ReaderT TaskState' IO a)
+newtype Build a = Build (ReaderT TaskState IO a)
   deriving newtype (Functor, Applicative, Monad, MonadIO)
 
-unwrapBuild :: Build a -> (TaskState' -> IO a)
+unwrapBuild :: Build a -> (TaskState -> IO a)
 unwrapBuild (Build (ReaderT f)) = \s -> f s
 
 runBuild :: SQLite.Connection -> Build a -> IO a
 runBuild connection taskM = do
-  taskState <- newTaskState' connection
+  tasks <- getTasks
+  buildState <- atomically $ Static.newBuildState connection (\taskState someKey -> unwrapBuild (tasks someKey) taskState)
+  taskState <- atomically $ Static.newTaskState buildState
   unwrapBuild taskM taskState
 
 realize :: Task a => a -> TaskArgs a :->: Build (TaskResult a)
