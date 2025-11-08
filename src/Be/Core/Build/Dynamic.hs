@@ -121,11 +121,11 @@ registerTaskWith funName options = do
   info <- TH.reify funName
   typ <- case info of
     TH.VarI _ typ _ -> pure typ
-    _ -> fail "task: expected a function"
+    _ -> fail "Task registration expected a function"
   let (taskArgs, returnType) = argsAndResult typ
   taskResult <- case unwrapIO returnType of
     Just taskResult -> pure taskResult
-    Nothing -> fail "task: function must run in Build monad"
+    Nothing -> fail "Task function must run in 'Build' monad"
   sequence
     [ generateDataDec
     , generateInstDec taskArgs taskResult
