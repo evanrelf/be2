@@ -6,7 +6,6 @@ module Be.Core.Build.DynamicTest where
 import Be.Core.Build.Dynamic
 import Be.Core.Build.Static (BuildState (..), TaskState (..))
 import Be.Core.Hash (hash)
-import Be.Core.Registry (discoverInstances, registerInstances)
 import Be.Core.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
 import Be.Core.Value (SomeValue, Value, toSomeValue)
 import Data.HashMap.Strict qualified as HashMap
@@ -41,8 +40,7 @@ registerTask 'concat
 
 unit_build_system_dynamic :: Assertion
 unit_build_system_dynamic = do
-  registerInstances $$(discoverInstances @Value)
-  registerInstances $$(discoverInstances @Task)
+  $$initBuild
 
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
