@@ -50,13 +50,16 @@ registerInstances @c dicts = do
           Sub Dict -> (someTypeRep proxy, dict)
   let instances :: Instances c
       instances = HashMap.fromList $ map toEntry dicts
-  atomicModifyIORef' registryIORef \registry ->
-    ( HashMap.insert
-        (someTypeRep (Proxy @c))
-        (toSomeInstances instances)
-        registry
-    , ()
-    )
+  alreadyRegistered <-
+    atomicModifyIORef' registryIORef \registry ->
+      ( HashMap.insert
+          (someTypeRep (Proxy @c))
+          (toSomeInstances instances)
+          registry
+      , HashMap.member (someTypeRep (Proxy @c)) registry
+      )
+  when alreadyRegistered do
+    error $ "Instances for `" <> show (typeRep @c) <> "` already registered"
 
 lookupInstanceIO :: Typeable c => SomeTypeRep -> IO (Maybe (SomeDict c))
 lookupInstanceIO @c t = do
