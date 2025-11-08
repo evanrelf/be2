@@ -4,6 +4,7 @@
 module Be.Core.Build.DynamicTest where
 
 import Be.Core.Build.Dynamic
+import Be.Core.Build.Static (BuildState (..), TaskState (..))
 import Be.Core.Hash (hash)
 import Be.Core.Registry (discoverInstances, registerInstances)
 import Be.Core.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
@@ -49,11 +50,11 @@ unit_build_system_dynamic = do
     dbDrop connection
     dbCreate connection
 
-    buildState <- newBuildState' connection
+    taskState <- newTaskState' connection
+    let buildState = taskState.buildState
 
     let path = "/files"
 
-    taskState <- atomically $ newTaskState' buildState
     actualResult <- realize Concat taskState path
     let expectedResult = toBytes "AAAA\nAAAA\nBBBB\n"
     assertEqual "result 1" expectedResult actualResult
@@ -107,11 +108,11 @@ unit_build_system_dynamic = do
     taskCount <- readTVarIO buildState.debugTaskCount
     assertEqual "task count 1" taskCount 4
 
-    buildState' <- newBuildState' connection
+    taskState' <- newTaskState' connection
+    let buildState' = taskState.buildState
 
     -- Second run should produce the same results...
 
-    taskState' <- atomically $ newTaskState' buildState'
     actualResult' <- realize Concat taskState' path
     assertEqual "result 2" expectedResult actualResult'
 

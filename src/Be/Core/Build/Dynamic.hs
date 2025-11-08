@@ -4,11 +4,7 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 
 module Be.Core.Build.Dynamic
-  ( BuildState'
-  , Static.BuildState (..)
-  , TaskState'
-  , Static.TaskState (..)
-  , newBuildState'
+  ( TaskState'
   , newTaskState'
 
   , TaskM
@@ -39,17 +35,13 @@ import Language.Haskell.TH.Syntax (Lift)
 import Language.Haskell.TH.Syntax qualified as TH
 import VarArgs ((:->:))
 
-type BuildState' = Static.BuildState SomeValue SomeValue
-
 type TaskState' = Static.TaskState SomeValue SomeValue
 
-newBuildState' :: SQLite.Connection -> IO BuildState'
-newBuildState' connection = do
+newTaskState' :: SQLite.Connection -> IO TaskState'
+newTaskState' connection = do
   tasks <- getTasks
-  atomically $ Static.newBuildState connection tasks
-
-newTaskState' :: BuildState' -> STM TaskState'
-newTaskState' = Static.newTaskState
+  buildState <- atomically $ Static.newBuildState connection tasks
+  atomically $ Static.newTaskState buildState
 
 newtype TaskM a = TaskM (ReaderT TaskState' IO a)
   deriving newtype (Functor, Applicative, Monad)
