@@ -14,8 +14,8 @@ import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (concat, readFile)
 import Test.Tasty.HUnit
 
-readFile :: TaskState' -> FilePath -> IO ByteString
-readFile _taskState path = do
+readFile :: FilePath -> TaskM ByteString
+readFile path = do
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
   let bytes = case path of
@@ -28,12 +28,12 @@ readFile _taskState path = do
 
 registerTaskWith 'readFile defaultTaskOptions{ volatile = True }
 
-concat :: TaskState' -> FilePath -> IO ByteString
-concat taskState path = do
-  bytes <- realize ReadFile taskState path
+concat :: FilePath -> TaskM ByteString
+concat path = do
+  bytes <- realize ReadFile path
   let text = decodeUtf8 bytes
   let paths = map toString (lines text)
-  output <- foldMapM (realize ReadFile taskState) paths
+  output <- foldMapM (realize ReadFile) paths
   pure output
 
 registerTask 'concat
@@ -50,88 +50,92 @@ unit_build_system_dynamic = do
     dbDrop connection
     dbCreate connection
 
-    taskState <- newTaskState' connection
-    let buildState = taskState.buildState
-
     let path = "/files"
 
-    actualResult <- realize Concat taskState path
-    let expectedResult = toBytes "AAAA\nAAAA\nBBBB\n"
-    assertEqual "result 1" expectedResult actualResult
+    (expectedResult, expectedStore, expectedDone, expectedTraces) <- runTaskM connection do
+      taskState <- TaskM ask
+      let buildState = taskState.buildState
 
-    let expectedStore = HashMap.fromList
-          [ ( toSomeValue (ReadFileKey "/files")
-            , toSomeValue (ReadFileValue (toBytes "/files/a\n/files/a\n/files/b\n"))
-            )
-          , ( toSomeValue (ReadFileKey "/files/a")
-            , toSomeValue (ReadFileValue (toBytes "AAAA\n"))
-            )
-          , ( toSomeValue (ReadFileKey "/files/b")
-            , toSomeValue (ReadFileValue (toBytes "BBBB\n"))
-            )
-          , ( toSomeValue (ConcatKey "/files")
-            , toSomeValue (ConcatValue (toBytes "AAAA\nAAAA\nBBBB\n"))
-            )
-          ]
-    actualStore <- readTVarIO buildState.store
-    assertEqual "store 1" expectedStore actualStore
+      actualResult <- realize Concat path
+      let expectedResult = toBytes "AAAA\nAAAA\nBBBB\n"
+      liftIO $ assertEqual "result 1" expectedResult actualResult
 
-    let expectedDone = fmap (const True) expectedStore
-    actualDone <- do
-      done <- readTVarIO buildState.done
-      forM done \tmvar -> do
-        isEmpty <- atomically $ isEmptyTMVar tmvar
-        pure (not isEmpty)
-    assertEqual "done 1" expectedDone actualDone
+      let expectedStore = HashMap.fromList
+            [ ( toSomeValue (ReadFileKey "/files")
+              , toSomeValue (ReadFileValue (toBytes "/files/a\n/files/a\n/files/b\n"))
+              )
+            , ( toSomeValue (ReadFileKey "/files/a")
+              , toSomeValue (ReadFileValue (toBytes "AAAA\n"))
+              )
+            , ( toSomeValue (ReadFileKey "/files/b")
+              , toSomeValue (ReadFileValue (toBytes "BBBB\n"))
+              )
+            , ( toSomeValue (ConcatKey "/files")
+              , toSomeValue (ConcatValue (toBytes "AAAA\nAAAA\nBBBB\n"))
+              )
+            ]
+      actualStore <- readTVarIO buildState.store
+      liftIO $ assertEqual "store 1" expectedStore actualStore
 
-    let expectedTraces =
-          [ Trace
-              { key = toSomeValue (ConcatKey "/files")
-              , deps = HashMap.fromList
-                  [ ( toSomeValue (ReadFileKey "/files")
-                    , hash (toSomeValue (ReadFileValue (toBytes "/files/a\n/files/a\n/files/b\n")))
-                    )
-                  , ( toSomeValue (ReadFileKey "/files/a")
-                    , hash (toSomeValue (ReadFileValue (toBytes "AAAA\n")))
-                    )
-                  , ( toSomeValue (ReadFileKey "/files/b")
-                    , hash (toSomeValue (ReadFileValue (toBytes "BBBB\n")))
-                    )
-                  ]
-              , value = toSomeValue (ConcatValue (toBytes "AAAA\nAAAA\nBBBB\n"))
-              }
-          ]
-    actualTraces :: [Trace SomeValue SomeValue] <- fetchTraces connection Nothing
-    assertEqual "traces 1" expectedTraces actualTraces
+      let expectedDone = fmap (const True) expectedStore
+      actualDone <- do
+        done <- readTVarIO buildState.done
+        forM done \tmvar -> do
+          isEmpty <- atomically $ isEmptyTMVar tmvar
+          pure (not isEmpty)
+      liftIO $ assertEqual "done 1" expectedDone actualDone
 
-    -- 3 `readFile`s, 1 `concat`
-    taskCount <- readTVarIO buildState.debugTaskCount
-    assertEqual "task count 1" taskCount 4
+      let expectedTraces =
+            [ Trace
+                { key = toSomeValue (ConcatKey "/files")
+                , deps = HashMap.fromList
+                    [ ( toSomeValue (ReadFileKey "/files")
+                      , hash (toSomeValue (ReadFileValue (toBytes "/files/a\n/files/a\n/files/b\n")))
+                      )
+                    , ( toSomeValue (ReadFileKey "/files/a")
+                      , hash (toSomeValue (ReadFileValue (toBytes "AAAA\n")))
+                      )
+                    , ( toSomeValue (ReadFileKey "/files/b")
+                      , hash (toSomeValue (ReadFileValue (toBytes "BBBB\n")))
+                      )
+                    ]
+                , value = toSomeValue (ConcatValue (toBytes "AAAA\nAAAA\nBBBB\n"))
+                }
+            ]
+      actualTraces :: [Trace SomeValue SomeValue] <- liftIO $ fetchTraces connection Nothing
+      liftIO $ assertEqual "traces 1" expectedTraces actualTraces
 
-    taskState' <- newTaskState' connection
-    let buildState' = taskState.buildState
+      -- 3 `readFile`s, 1 `concat`
+      taskCount <- readTVarIO buildState.debugTaskCount
+      liftIO $ assertEqual "task count 1" taskCount 4
 
-    -- Second run should produce the same results...
+      pure (expectedResult, expectedStore, expectedDone, expectedTraces)
 
-    actualResult' <- realize Concat taskState' path
-    assertEqual "result 2" expectedResult actualResult'
+    runTaskM connection do
+      taskState <- TaskM ask
+      let buildState = taskState.buildState
 
-    actualStore' <- readTVarIO buildState'.store
-    assertEqual "store 2" expectedStore actualStore'
+      -- Second run should produce the same results...
 
-    actualDone' <- do
-      done <- readTVarIO buildState'.done
-      forM done \tmvar -> do
-        isEmpty <- atomically $ isEmptyTMVar tmvar
-        pure (not isEmpty)
-    assertEqual "done 2" expectedDone actualDone'
+      actualResult' <- realize Concat path
+      liftIO $ assertEqual "result 2" expectedResult actualResult'
 
-    actualTraces' :: [Trace SomeValue SomeValue] <- fetchTraces connection Nothing
-    assertEqual "traces 2" expectedTraces actualTraces'
+      actualStore' <- readTVarIO buildState.store
+      liftIO $ assertEqual "store 2" expectedStore actualStore'
 
-    -- ...but not run any non-volatile tasks, because they're cached.
-    -- 3 `readFile`s (volatile), 1 `concat` (non-volatile)
-    taskCount' <- readTVarIO buildState'.debugTaskCount
-    assertEqual "task count 2" taskCount' 3
+      actualDone' <- do
+        done <- readTVarIO buildState.done
+        forM done \tmvar -> do
+          isEmpty <- atomically $ isEmptyTMVar tmvar
+          pure (not isEmpty)
+      liftIO $ assertEqual "done 2" expectedDone actualDone'
 
-    pure ()
+      actualTraces' :: [Trace SomeValue SomeValue] <- liftIO $ fetchTraces connection Nothing
+      liftIO $ assertEqual "traces 2" expectedTraces actualTraces'
+
+      -- ...but not run any non-volatile tasks, because they're cached.
+      -- 3 `readFile`s (volatile), 1 `concat` (non-volatile)
+      taskCount' <- readTVarIO buildState.debugTaskCount
+      liftIO $ assertEqual "task count 2" taskCount' 3
+
+      pure ()
