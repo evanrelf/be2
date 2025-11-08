@@ -49,9 +49,7 @@ unit_build_system_dynamic = do
     dbDrop connection
     dbCreate connection
 
-    tasks <- getTasks
-
-    buildState <- atomically $ newBuildState' connection tasks
+    buildState <- newBuildState' connection
 
     let path = "/files"
 
@@ -109,7 +107,7 @@ unit_build_system_dynamic = do
     taskCount <- readTVarIO buildState.debugTaskCount
     assertEqual "task count 1" taskCount 4
 
-    buildState' <- atomically $ newBuildState' connection tasks
+    buildState' <- newBuildState' connection
 
     -- Second run should produce the same results...
 

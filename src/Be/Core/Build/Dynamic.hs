@@ -21,7 +21,6 @@ module Be.Core.Build.Dynamic
   , TaskOptions (..)
   , defaultTaskOptions
 
-  , getTasks
   , registerTask
   , registerTaskWith
   )
@@ -44,11 +43,10 @@ type BuildState' = Static.BuildState SomeValue SomeValue
 
 type TaskState' = Static.TaskState SomeValue SomeValue
 
-newBuildState'
-  :: SQLite.Connection
-  -> (TaskState' -> SomeValue -> IO (SomeValue, Bool))
-  -> STM BuildState'
-newBuildState' = Static.newBuildState
+newBuildState' :: SQLite.Connection -> IO BuildState'
+newBuildState' connection = do
+  tasks <- getTasks
+  atomically $ Static.newBuildState connection tasks
 
 newTaskState' :: BuildState' -> STM TaskState'
 newTaskState' = Static.newTaskState
