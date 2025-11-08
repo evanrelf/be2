@@ -14,7 +14,7 @@ import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (concat, readFile)
 import Test.Tasty.HUnit
 
-readFile :: FilePath -> TaskM ByteString
+readFile :: FilePath -> Build ByteString
 readFile path = do
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
@@ -28,7 +28,7 @@ readFile path = do
 
 registerTaskWith 'readFile defaultTaskOptions{ volatile = True }
 
-concat :: FilePath -> TaskM ByteString
+concat :: FilePath -> Build ByteString
 concat path = do
   bytes <- realize ReadFile path
   let text = decodeUtf8 bytes
@@ -52,8 +52,8 @@ unit_build_system_dynamic = do
 
     let path = "/files"
 
-    (expectedResult, expectedStore, expectedDone, expectedTraces) <- runTaskM connection do
-      taskState <- TaskM ask
+    (expectedResult, expectedStore, expectedDone, expectedTraces) <- runBuild connection do
+      taskState <- Build ask
       let buildState = taskState.buildState
 
       actualResult <- realize Concat path
@@ -111,8 +111,8 @@ unit_build_system_dynamic = do
 
       pure (expectedResult, expectedStore, expectedDone, expectedTraces)
 
-    runTaskM connection do
-      taskState <- TaskM ask
+    runBuild connection do
+      taskState <- Build ask
       let buildState = taskState.buildState
 
       -- Second run should produce the same results...

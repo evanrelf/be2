@@ -4,9 +4,9 @@
 {-# LANGUAGE TypeFamilyDependencies #-}
 
 module Be.Core.Build.Dynamic
-  ( TaskM (..)
-  , unTaskM
-  , runTaskM
+  ( Build (..)
+  , unwrapBuild
+  , runBuild
   , realize
 
   , Task (..)
@@ -36,24 +36,24 @@ type TaskState' = Static.TaskState SomeValue SomeValue
 newTaskState' :: SQLite.Connection -> IO TaskState'
 newTaskState' connection = do
   tasks <- getTasks
-  buildState <- atomically $ Static.newBuildState connection (\taskState someKey -> unTaskM (tasks someKey) taskState)
+  buildState <- atomically $ Static.newBuildState connection (\taskState someKey -> unwrapBuild (tasks someKey) taskState)
   taskState <- atomically $ Static.newTaskState buildState
   pure taskState
 
-newtype TaskM a = TaskM (ReaderT TaskState' IO a)
+newtype Build a = Build (ReaderT TaskState' IO a)
   deriving newtype (Functor, Applicative, Monad, MonadIO)
 
-unTaskM :: TaskM a -> (TaskState' -> IO a)
-unTaskM (TaskM (ReaderT f)) = \s -> f s
+unwrapBuild :: Build a -> (TaskState' -> IO a)
+unwrapBuild (Build (ReaderT f)) = \s -> f s
 
-runTaskM :: SQLite.Connection -> TaskM a -> IO a
-runTaskM connection taskM = do
+runBuild :: SQLite.Connection -> Build a -> IO a
+runBuild connection taskM = do
   taskState <- newTaskState' connection
-  unTaskM taskM taskState
+  unwrapBuild taskM taskState
 
-realize :: Task a => a -> TaskArgs a :->: TaskM (TaskResult a)
+realize :: Task a => a -> TaskArgs a :->: Build (TaskResult a)
 realize sing = curryN \(args :: TupleArgs (TaskArgs a)) -> do
-  uncurryN (taskRealize @a (Identity sing)) args :: TaskM (TaskResult a)
+  uncurryN (taskRealize @a (Identity sing)) args :: Build (TaskResult a)
 
 type Task :: Type -> Constraint
 class
@@ -78,18 +78,18 @@ class
 
   taskSing :: a
 
-  taskBuild :: proxy a -> TaskArgs a :->: TaskM (TaskResult a)
+  taskBuild :: proxy a -> TaskArgs a :->: Build (TaskResult a)
 
 instance Class (Typeable a) (Task a) where
   cls = Sub Dict
 
-taskRealize :: Task a => proxy a -> TaskArgs a :->: TaskM (TaskResult a)
+taskRealize :: Task a => proxy a -> TaskArgs a :->: Build (TaskResult a)
 taskRealize proxy = curryN \args -> do
-  taskState <- TaskM ask
+  taskState <- Build ask
   someValue <- liftIO $ Static.taskStateRealize taskState (toSomeValue (argsToKey proxy args))
   pure (valueToResult proxy (fromSomeValue' someValue))
 
-taskHandler :: Task a => proxy a -> TaskKey a -> TaskM (TaskValue a, Bool)
+taskHandler :: Task a => proxy a -> TaskKey a -> Build (TaskValue a, Bool)
 taskHandler @a proxy key = do
   result <- uncurryN (taskBuild proxy) (keyToArgs key)
   let options = taskOptions @a
@@ -130,7 +130,7 @@ registerTaskWith funName options = do
   let (taskArgs, returnType) = argsAndResult typ
   taskResult <- case unwrapIO returnType of
     Just taskResult -> pure taskResult
-    Nothing -> fail "task: function must run in TaskM monad"
+    Nothing -> fail "task: function must run in Build monad"
   sequence
     [ generateDataDec
     , generateInstDec taskArgs taskResult
@@ -144,7 +144,7 @@ registerTaskWith funName options = do
 
   unwrapIO :: TH.Type -> Maybe TH.Type
   unwrapIO = \case
-    (TH.AppT (TH.ConT f) a) | TH.nameBase f == "TaskM" -> Just a
+    (TH.AppT (TH.ConT f) a) | TH.nameBase f == "Build" -> Just a
     _ -> Nothing
 
   capitalizeFirst :: String -> String
@@ -225,9 +225,9 @@ registerTaskWith funName options = do
       ]
 
 data TaskHandler where
-  TaskHandler :: Task a => (TaskKey a -> TaskM (TaskValue a, Bool)) -> TaskHandler
+  TaskHandler :: Task a => (TaskKey a -> Build (TaskValue a, Bool)) -> TaskHandler
 
-getTasks :: IO (SomeValue -> TaskM (SomeValue, Bool))
+getTasks :: IO (SomeValue -> Build (SomeValue, Bool))
 getTasks = do
   mInstances <- getInstancesIO @Task
   let instances = fromMaybe HashMap.empty mInstances
