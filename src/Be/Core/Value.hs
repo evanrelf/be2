@@ -35,7 +35,7 @@ instance Eq SomeValue where
       Nothing -> False
 
 instance Hashable SomeValue where
-  hashWithSalt salt (SomeValue t x) = hashWithSalt salt (t, x)
+  hashWithSalt salt (SomeValue _ x) = hashWithSalt salt x
 
 instance Serialise SomeValue where
   encode (SomeValue t x) = encode (t, x)
