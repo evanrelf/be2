@@ -21,7 +21,6 @@ module Be.Core.Build.Dynamic
   , TaskOptions (..)
   , defaultTaskOptions
 
-  , discoverTasks
   , getTasks
   , registerTask
   , registerTaskWith
@@ -29,17 +28,16 @@ module Be.Core.Build.Dynamic
 where
 
 import Be.Core.Build.Static qualified as Static
+import Be.Core.Registry (getInstancesIO)
 import Be.Core.Value (SomeValue (..), Value, fromSomeValue, fromSomeValue', toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.Char (toUpper)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
-import DiscoverInstances (SomeDict, SomeDictOf (..), discoverInstances)
+import DiscoverInstances (Class (..), Dict (..), SomeDictOf (..), (:-) (..))
 import Language.Haskell.TH qualified as TH
 import Language.Haskell.TH.Syntax (Lift)
 import Language.Haskell.TH.Syntax qualified as TH
-import System.IO.Unsafe (unsafePerformIO)
-import Type.Reflection (SomeTypeRep, someTypeRep)
 import VarArgs ((:->:))
 
 type BuildState' = Static.BuildState SomeValue SomeValue
@@ -97,6 +95,9 @@ class
   taskSing :: a
 
   taskBuild :: proxy a -> TaskState' -> TaskArgs a :->: IO (TaskResult a)
+
+instance Class (Typeable a) (Task a) where
+  cls = Sub Dict
 
 taskRealize :: Task a => proxy a -> TaskState' -> TaskArgs a :->: IO (TaskResult a)
 taskRealize proxy taskState = curryN \args -> do
@@ -239,35 +240,16 @@ registerTaskWith funName options = do
       , taskBuildFun
       ]
 
-taskRegistry :: IORef (HashMap SomeTypeRep (SomeDict Task))
-taskRegistry = unsafePerformIO $ newIORef HashMap.empty
-{-# NOINLINE taskRegistry #-}
-
-discoverTasks :: TH.Code TH.Q (IO ())
-discoverTasks = [|| do
-    let dicts :: [SomeDict Task]
-        dicts = $$discoverInstances
-    let tasks = dicts
-          & map (\dict@(SomeDictOf proxy) -> (someTypeRep proxy, dict))
-          & HashMap.fromList
-    atomicModifyIORef' taskRegistry \tr -> (HashMap.union tasks tr, ())
-  ||]
-
 data TaskHandler where
   TaskHandler :: Task a => (TaskState' -> TaskKey a -> IO (TaskValue a, Bool)) -> TaskHandler
 
-getTaskHandlers :: IO [TaskHandler]
-getTaskHandlers = do
-  tr <- readIORef taskRegistry
-  let dicts :: [SomeDict Task]
-      dicts = HashMap.elems tr
-  let toHandler :: SomeDict Task -> TaskHandler
-      toHandler (SomeDictOf proxy) = TaskHandler (taskHandler proxy)
-  pure (map toHandler dicts)
-
 getTasks :: IO (TaskState' -> SomeValue -> IO (SomeValue, Bool))
 getTasks = do
-  taskHandlers <- getTaskHandlers
+  mInstances <- getInstancesIO @Task
+  let instances = fromMaybe HashMap.empty mInstances
+  let dicts = HashMap.elems instances
+  let toTaskHandler (SomeDictOf @Task proxy) = TaskHandler (taskHandler proxy)
+  let taskHandlers = map toTaskHandler dicts
   pure \taskState someKey@(SomeValue t _) -> do
     let tryHandler (TaskHandler handler) rest =
           case fromSomeValue someKey of

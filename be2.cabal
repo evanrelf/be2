@@ -59,6 +59,7 @@ library
     , Be.Core.Build.Dynamic
     , Be.Core.Build.Static
     , Be.Core.Hash
+    , Be.Core.Registry
     , Be.Core.Trace
     , Be.Core.Value
     , Be.Format

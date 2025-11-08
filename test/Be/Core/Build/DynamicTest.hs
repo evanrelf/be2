@@ -5,8 +5,9 @@ module Be.Core.Build.DynamicTest where
 
 import Be.Core.Build.Dynamic
 import Be.Core.Hash (hash)
+import Be.Core.Registry (discoverInstances, registerInstances)
 import Be.Core.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
-import Be.Core.Value (SomeValue, Value, discoverValues, toSomeValue)
+import Be.Core.Value (SomeValue, Value, toSomeValue)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (concat, readFile)
@@ -38,8 +39,8 @@ registerTask 'concat
 
 unit_build_system_dynamic :: Assertion
 unit_build_system_dynamic = do
-  $$discoverValues
-  $$discoverTasks
+  registerInstances $$(discoverInstances @Value)
+  registerInstances $$(discoverInstances @Task)
 
   let toBytes :: Text -> ByteString
       toBytes = encodeUtf8
