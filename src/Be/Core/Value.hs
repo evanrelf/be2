@@ -15,6 +15,7 @@ import Codec.Serialise (Serialise (..))
 import Codec.Serialise.Decoding (decodeListLenOf)
 import DiscoverInstances (Class (..), Dict (..), SomeDictOf (..), (:-) (..))
 import Type.Reflection (TypeRep, (:~~:) (..), eqTypeRep, typeRep)
+import Text.Show (showsPrec)
 
 class (Typeable a, Show a, Serialise a, Hashable a) => Value a
 
@@ -26,7 +27,8 @@ data SomeValue where
 
 instance Value SomeValue
 
-deriving stock instance Show SomeValue
+instance Show SomeValue where
+  showsPrec precedence (SomeValue _ x) = showsPrec precedence x
 
 instance Eq SomeValue where
   SomeValue t1 x1 == SomeValue t2 x2 =
