@@ -5,10 +5,8 @@
 module Be.Core.Registry
   ( discoverInstances
   , registerInstances
-  , lookupInstanceIO
-  , unsafeLookupInstance
-  , getInstancesIO
-  , unsafeGetInstances
+  , getInstances
+  , lookupInstance
   )
 where
 
@@ -32,9 +30,6 @@ fromSomeInstances @c (SomeInstances t r) =
   case eqTypeRep t (typeRep @c) of
     Just HRefl -> Just r
     Nothing -> Nothing
-
--- TODO: Throw error if register is called more than once, or if lookup is
--- called before register. Either can break referential transparency.
 
 registryIORef :: IORef Registry
 registryIORef = unsafePerformIO $ newIORef HashMap.empty
@@ -61,25 +56,25 @@ registerInstances @c dicts = do
   when alreadyRegistered do
     error $ "Instances for `" <> show (typeRep @c) <> "` already registered"
 
-lookupInstanceIO :: Typeable c => SomeTypeRep -> IO (Maybe (SomeDict c))
-lookupInstanceIO @c t = do
-  registry <- readIORef registryIORef
-  pure do
-    someInstances <- HashMap.lookup (someTypeRep (Proxy @c)) registry
-    instances <- fromSomeInstances someInstances
-    HashMap.lookup t instances
-
-unsafeLookupInstance :: Typeable c => SomeTypeRep -> Maybe (SomeDict c)
-unsafeLookupInstance @c t = unsafePerformIO (lookupInstanceIO @c t)
-{-# NOINLINE unsafeLookupInstance #-}
-
-getInstancesIO :: Typeable c => IO (Maybe (HashMap SomeTypeRep (SomeDict c)))
+getInstancesIO :: Typeable c => IO (HashMap SomeTypeRep (SomeDict c))
 getInstancesIO @c = do
   registry <- readIORef registryIORef
-  pure do
-    someInstances <- HashMap.lookup (someTypeRep (Proxy @c)) registry
-    fromSomeInstances someInstances
+  case HashMap.lookup (someTypeRep (Proxy @c)) registry of
+    Nothing ->
+      error $ "Instances for `" <> show (typeRep @c) <> "` not yet registered"
+    Just someInstances -> case fromSomeInstances someInstances of
+      Nothing -> error "unreachable"
+      Just instances -> pure instances
 
-unsafeGetInstances :: Typeable c => Maybe (HashMap SomeTypeRep (SomeDict c))
-unsafeGetInstances @c = unsafePerformIO (getInstancesIO @c)
-{-# NOINLINE unsafeGetInstances #-}
+getInstances :: Typeable c => HashMap SomeTypeRep (SomeDict c)
+getInstances @c = unsafePerformIO (getInstancesIO @c)
+{-# NOINLINE getInstances #-}
+
+lookupInstanceIO :: Typeable c => SomeTypeRep -> IO (Maybe (SomeDict c))
+lookupInstanceIO @c t = do
+  instances <- getInstancesIO @c
+  pure $ HashMap.lookup t instances
+
+lookupInstance :: Typeable c => SomeTypeRep -> Maybe (SomeDict c)
+lookupInstance @c t = unsafePerformIO (lookupInstanceIO @c t)
+{-# NOINLINE lookupInstance #-}

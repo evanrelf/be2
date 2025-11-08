@@ -19,7 +19,7 @@ module Be.Core.Build.Dynamic
 where
 
 import Be.Core.Build.Static qualified as Static
-import Be.Core.Registry (getInstancesIO)
+import Be.Core.Registry (getInstances)
 import Be.Core.Value (SomeValue (..), Value, fromSomeValue, fromSomeValue', toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.Char (toUpper)
@@ -41,7 +41,7 @@ unwrapBuild (Build (ReaderT f)) = \s -> f s
 
 runBuild :: SQLite.Connection -> Build a -> IO a
 runBuild connection taskM = do
-  tasks <- getTasks
+  let tasks = getTasks
   buildState <- atomically $ Static.newBuildState connection (\taskState someKey -> unwrapBuild (tasks someKey) taskState)
   taskState <- atomically $ Static.newTaskState buildState
   unwrapBuild taskM taskState
@@ -222,22 +222,20 @@ registerTaskWith funName options = do
 data TaskHandler where
   TaskHandler :: Task a => (TaskKey a -> Build (TaskValue a, Bool)) -> TaskHandler
 
-getTasks :: IO (SomeValue -> Build (SomeValue, Bool))
-getTasks = do
-  mInstances <- getInstancesIO @Task
-  let instances = fromMaybe HashMap.empty mInstances
+getTasks :: SomeValue -> Build (SomeValue, Bool)
+getTasks someKey@(SomeValue t _) = do
+  let instances = getInstances @Task
   let dicts = HashMap.elems instances
   let toTaskHandler (SomeDictOf @Task proxy) = TaskHandler (taskHandler proxy)
   let taskHandlers = map toTaskHandler dicts
-  pure \someKey@(SomeValue t _) -> do
-    let tryHandler (TaskHandler handler) rest =
-          case fromSomeValue someKey of
-            Just key -> do
-              (value, volatile) <- handler key
-              pure (toSomeValue value, volatile)
-            Nothing -> rest
-    let fallback = error $ "No task handler for `" <> show t <> "`; did you register `Task` instances?"
-    foldr tryHandler fallback taskHandlers
+  let tryHandler (TaskHandler handler) rest =
+        case fromSomeValue someKey of
+          Just key -> do
+            (value, volatile) <- handler key
+            pure (toSomeValue value, volatile)
+          Nothing -> rest
+  let fallback = error $ "No handler for task `" <> show t <> "`; `Task` instance missing from registry"
+  foldr tryHandler fallback taskHandlers
 
 type CurryN :: [Type] -> Constraint
 class CurryN args where

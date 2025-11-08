@@ -10,7 +10,7 @@ module Be.Core.Value
   )
 where
 
-import Be.Core.Registry (unsafeLookupInstance)
+import Be.Core.Registry (lookupInstance)
 import Codec.Serialise (Serialise (..))
 import Codec.Serialise.Decoding (decodeListLenOf)
 import DiscoverInstances (Class (..), Dict (..), SomeDictOf (..), (:-) (..))
@@ -42,9 +42,9 @@ instance Serialise SomeValue where
   decode = do
     decodeListLenOf 2
     t <- decode
-    case unsafeLookupInstance @Value t of
+    case lookupInstance @Value t of
       Just (SomeDictOf (Proxy @a)) -> SomeValue (typeRep @a) <$> decode @a
-      Nothing -> fail $ "Type `" <> show t <> "` missing from value registry; did you register `Value` instances?"
+      Nothing -> fail $ "Failed to deserialize value of type `" <> show t <> "`; `Value` instance missing from registry"
 
 toSomeValue :: Value a => a -> SomeValue
 toSomeValue x = SomeValue typeRep x

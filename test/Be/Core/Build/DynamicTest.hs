@@ -42,7 +42,6 @@ registerTask 'concat
 unit_build_system_dynamic :: Assertion
 unit_build_system_dynamic = do
   registerInstances $$(discoverInstances @Value)
-  registerInstances $$(discoverInstances @Value)
   registerInstances $$(discoverInstances @Task)
 
   let toBytes :: Text -> ByteString
