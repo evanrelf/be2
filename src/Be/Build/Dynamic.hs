@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE TemplateHaskellQuotes #-}
+{-# LANGUAGE TypeAbstractions #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
 module Be.Build.Dynamic
@@ -9,7 +10,12 @@ module Be.Build.Dynamic
   , Static.TaskState (..)
   , newBuildState'
   , newTaskState'
+
+  , TaskM
+  , runTaskM
   , realize
+  , task
+  , io
 
   , Task (..)
   , TaskOptions (..)
@@ -49,6 +55,24 @@ newBuildState' = Static.newBuildState
 newTaskState' :: BuildState' -> STM TaskState'
 newTaskState' = Static.newTaskState
 
+newtype TaskM a = TaskM (ReaderT TaskState' IO a)
+  deriving newtype (Functor, Applicative, Monad)
+
+runTaskM :: TaskState' -> TaskM a -> IO a
+runTaskM taskState (TaskM readerT) = runReaderT readerT taskState
+
+realize :: Task a => a -> TaskState' -> TaskArgs a :->: IO (TaskResult a)
+realize sing = taskRealize (Identity sing)
+
+task :: Task a => a -> TaskArgs a :->: TaskM (TaskResult a)
+task sing = curryN \(args :: TupleArgs (TaskArgs a)) -> do
+  taskState <- TaskM ask
+  result :: TaskResult a <- io $ uncurryN (taskRealize @a (Identity sing) taskState) args
+  pure result
+
+io :: IO a -> TaskM a
+io action = TaskM (ReaderT \_ -> action)
+
 type Task :: Type -> Constraint
 class
   ( Typeable a
@@ -74,27 +98,28 @@ class
 
   taskBuild :: proxy a -> TaskState' -> TaskArgs a :->: IO (TaskResult a)
 
-taskRealize :: forall a proxy. Task a => proxy a -> TaskState' -> TaskArgs a :->: IO (TaskResult a)
-taskRealize _ taskState = curryN \args -> do
-  let argsToKey :: TupleArgs (TaskArgs a) -> TaskKey a
-      argsToKey = coerce
-  let valueToResult :: TaskValue a -> TaskResult a
-      valueToResult = coerce
-  someValue <- Static.taskStateRealize taskState (toSomeValue (argsToKey args))
-  pure (valueToResult (fromSomeValue' someValue))
+taskRealize :: Task a => proxy a -> TaskState' -> TaskArgs a :->: IO (TaskResult a)
+taskRealize proxy taskState = curryN \args -> do
+  someValue <- Static.taskStateRealize taskState (toSomeValue (argsToKey proxy args))
+  pure (valueToResult proxy (fromSomeValue' someValue))
 
-taskHandler :: forall a proxy. Task a => proxy a -> TaskState' -> TaskKey a -> IO (TaskValue a, Bool)
-taskHandler proxy taskState key = do
-  let keyToArgs :: TaskKey a -> TupleArgs (TaskArgs a)
-      keyToArgs = coerce
-  let resultToValue :: TaskResult a -> TaskValue a
-      resultToValue = coerce
+taskHandler :: Task a => proxy a -> TaskState' -> TaskKey a -> IO (TaskValue a, Bool)
+taskHandler @a proxy taskState key = do
   result <- uncurryN (taskBuild proxy taskState) (keyToArgs key)
   let options = taskOptions @a
   pure (resultToValue result, options.volatile)
 
-realize :: Task a => a -> TaskState' -> TaskArgs a :->: IO (TaskResult a)
-realize sing = taskRealize (Identity sing)
+argsToKey :: Task a => proxy a -> TupleArgs (TaskArgs a) -> TaskKey a
+argsToKey _ = coerce
+
+keyToArgs :: Task a => TaskKey a -> TupleArgs (TaskArgs a)
+keyToArgs = coerce
+
+resultToValue :: Task a => TaskResult a -> TaskValue a
+resultToValue = coerce
+
+valueToResult :: Task a => proxy a -> TaskValue a -> TaskResult a
+valueToResult _ = coerce
 
 data TaskOptions = TaskOptions
   { volatile :: Bool
