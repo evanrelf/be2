@@ -12,7 +12,8 @@ import Be.Core.Value (SomeValue, Value, toSomeValue)
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (concat, readFile)
-import Test.Tasty.HUnit
+import Test.Tasty.HUnit hiding (assertEqual)
+import Test.Tasty.HUnit qualified as HUnit
 
 readFile :: FilePath -> Build ByteString
 readFile path = do
@@ -58,7 +59,7 @@ unit_build_system_dynamic = do
 
       actualResult <- realize Concat path
       let expectedResult = toBytes "AAAA\nAAAA\nBBBB\n"
-      liftIO $ assertEqual "result 1" expectedResult actualResult
+      assertEqual "result 1" expectedResult actualResult
 
       let expectedStore = HashMap.fromList
             [ ( toSomeValue (ReadFileKey "/files")
@@ -75,7 +76,7 @@ unit_build_system_dynamic = do
               )
             ]
       actualStore <- readTVarIO buildState.store
-      liftIO $ assertEqual "store 1" expectedStore actualStore
+      assertEqual "store 1" expectedStore actualStore
 
       let expectedDone = fmap (const True) expectedStore
       actualDone <- do
@@ -83,7 +84,7 @@ unit_build_system_dynamic = do
         forM done \tmvar -> do
           isEmpty <- atomically $ isEmptyTMVar tmvar
           pure (not isEmpty)
-      liftIO $ assertEqual "done 1" expectedDone actualDone
+      assertEqual "done 1" expectedDone actualDone
 
       let expectedTraces =
             [ Trace
@@ -102,12 +103,12 @@ unit_build_system_dynamic = do
                 , value = toSomeValue (ConcatValue (toBytes "AAAA\nAAAA\nBBBB\n"))
                 }
             ]
-      actualTraces :: [Trace SomeValue SomeValue] <- liftIO $ fetchTraces connection Nothing
-      liftIO $ assertEqual "traces 1" expectedTraces actualTraces
+      actualTraces :: [Trace SomeValue SomeValue] <- fetchTraces connection Nothing
+      assertEqual "traces 1" expectedTraces actualTraces
 
       -- 3 `readFile`s, 1 `concat`
       taskCount <- readTVarIO buildState.debugTaskCount
-      liftIO $ assertEqual "task count 1" taskCount 4
+      assertEqual "task count 1" taskCount 4
 
       pure (expectedResult, expectedStore, expectedDone, expectedTraces)
 
@@ -118,24 +119,27 @@ unit_build_system_dynamic = do
       -- Second run should produce the same results...
 
       actualResult' <- realize Concat path
-      liftIO $ assertEqual "result 2" expectedResult actualResult'
+      assertEqual "result 2" expectedResult actualResult'
 
       actualStore' <- readTVarIO buildState.store
-      liftIO $ assertEqual "store 2" expectedStore actualStore'
+      assertEqual "store 2" expectedStore actualStore'
 
       actualDone' <- do
         done <- readTVarIO buildState.done
         forM done \tmvar -> do
           isEmpty <- atomically $ isEmptyTMVar tmvar
           pure (not isEmpty)
-      liftIO $ assertEqual "done 2" expectedDone actualDone'
+      assertEqual "done 2" expectedDone actualDone'
 
-      actualTraces' :: [Trace SomeValue SomeValue] <- liftIO $ fetchTraces connection Nothing
-      liftIO $ assertEqual "traces 2" expectedTraces actualTraces'
+      actualTraces' :: [Trace SomeValue SomeValue] <- fetchTraces connection Nothing
+      assertEqual "traces 2" expectedTraces actualTraces'
 
       -- ...but not run any non-volatile tasks, because they're cached.
       -- 3 `readFile`s (volatile), 1 `concat` (non-volatile)
       taskCount' <- readTVarIO buildState.debugTaskCount
-      liftIO $ assertEqual "task count 2" taskCount' 3
+      assertEqual "task count 2" taskCount' 3
 
       pure ()
+
+assertEqual :: (Eq a, Show a, MonadIO m) => String -> a -> a -> m ()
+assertEqual x y z = liftIO $ HUnit.assertEqual x y z

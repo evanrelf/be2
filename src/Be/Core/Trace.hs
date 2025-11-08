@@ -26,13 +26,13 @@ data Trace k v = Trace
   deriving stock (Generic, Eq, Show)
   deriving anyclass (Serialise)
 
-dbDrop :: SQLite.Connection -> IO ()
-dbDrop connection = SQLite.withTransaction connection do
+dbDrop :: MonadIO m => SQLite.Connection -> m ()
+dbDrop connection = liftIO $ SQLite.withTransaction connection do
   SQLite.execute_ connection "drop table if exists traces"
   SQLite.execute_ connection "drop table if exists trace_deps"
 
-dbCreate :: SQLite.Connection -> IO ()
-dbCreate connection = SQLite.withTransaction connection do
+dbCreate :: MonadIO m => SQLite.Connection -> m ()
+dbCreate connection = liftIO $ SQLite.withTransaction connection do
   SQLite.execute_ connection [iii|
     create table traces (
       id integer primary key,
@@ -76,9 +76,9 @@ dbCreate connection = SQLite.withTransaction connection do
   |]
 
 fetchTraces
-  :: (Value k, Value v)
-  => SQLite.Connection -> Maybe k -> IO [Trace k v]
-fetchTraces connection mKey = do
+  :: (Value k, Value v, MonadIO m)
+  => SQLite.Connection -> Maybe k -> m [Trace k v]
+fetchTraces connection mKey = liftIO do
   traceRows :: [(Int64, LByteString, LByteString, LByteString)] <-
     case mKey of
       Just key -> do
@@ -126,8 +126,8 @@ fetchTraces connection mKey = do
 
     pure trace
 
-insertTrace :: (Value k, Value v) => SQLite.Connection -> Trace k v -> IO Int64
-insertTrace connection trace =
+insertTrace :: (Value k, Value v, MonadIO m) => SQLite.Connection -> Trace k v -> m Int64
+insertTrace connection trace = liftIO do
   flip onException (SQLite.execute_ connection "rollback") do
     SQLite.execute_ connection "begin"
 
