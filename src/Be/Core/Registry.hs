@@ -1,6 +1,10 @@
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE QuantifiedConstraints #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeAbstractions #-}
 {-# LANGUAGE UndecidableInstances #-}
+
+{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 
 module Be.Core.Registry
   ( discoverInstances
@@ -10,10 +14,13 @@ module Be.Core.Registry
   )
 where
 
+import Data.Constraint (Class (..), Dict (..), (:-) (..))
 import Data.HashMap.Strict qualified as HashMap
-import DiscoverInstances (Class (..), Dict (..), SomeDict, SomeDictOf (..), (:-) (..), discoverInstances)
+import Language.Haskell.TH qualified as TH
+import Language.Haskell.TH.Syntax qualified as TH
+import SomeDictOf (SomeDict, SomeDictOf (..))
 import System.IO.Unsafe (unsafePerformIO)
-import Type.Reflection (SomeTypeRep, TypeRep, (:~~:) (..), eqTypeRep, someTypeRep, typeRep)
+import Type.Reflection (SomeTypeRep, TypeRep, (:~~:) (..), eqTypeRep, someTypeRep, typeRep, typeRepTyCon, tyConName)
 
 type Registry = HashMap SomeTypeRep SomeInstances
 
@@ -34,6 +41,35 @@ fromSomeInstances @c (SomeInstances t r) =
 registryIORef :: IORef Registry
 registryIORef = unsafePerformIO $ newIORef HashMap.empty
 {-# NOINLINE registryIORef #-}
+
+discoverInstances :: forall (c :: _ -> Constraint). Typeable c => TH.Code TH.Q [SomeDict c]
+discoverInstances = TH.liftCode do
+  let className = tyConName (typeRepTyCon (typeRep @c))
+  -- TODO: Handle instances with multiple type parameters?
+  instanceDecs <- TH.reifyInstances (TH.mkName className) [TH.VarT (TH.mkName "a")]
+  let listTE :: [TH.TExp a] -> TH.TExp [a]
+      listTE = TH.TExp . TH.ListE . map TH.unType
+  dicts <- fmap listTE $ traverse decToDict instanceDecs
+  TH.examineCode [|| concat $$(TH.liftCode $ pure dicts) ||]
+
+decToDict :: forall k (c :: k -> Constraint). TH.InstanceDec -> TH.Q (TH.TExp [SomeDict c])
+decToDict = \case
+  TH.InstanceD _mOverlap cxt typ _decs ->
+    if null cxt then do
+      let stripSig = \case
+            TH.SigT a _ -> a
+            x -> x
+      let t = case typ of
+            TH.AppT _ t' -> stripSig t'
+            _ -> t
+      let proxy = [| Proxy :: Proxy $(pure t) |]
+      TH.unsafeTExpCoerce [| [ SomeDictOf $proxy ] |]
+    else
+      -- TODO: Handle instances with context
+      TH.examineCode [|| [] ||]
+  _ -> do
+    TH.reportWarning "discoverInstances called on 'reifyInstances' somehow returned something that wasn't a type class instance."
+    TH.examineCode [|| [] ||]
 
 registerInstances
   :: (Typeable c, forall a. Class (Typeable a) (c a))

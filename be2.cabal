@@ -47,9 +47,10 @@ library
     , ChibiHash
     , annotated-exception
     , bytestring
-    , discover-instances
+    , constraints
     , optparse-applicative
     , serialise
+    , some-dict-of
     , sqlite-simple
     , string-interpolate
     , template-haskell

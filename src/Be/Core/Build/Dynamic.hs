@@ -25,12 +25,13 @@ import Be.Core.Registry (discoverInstances, getInstances, registerInstances)
 import Be.Core.Value (SomeValue (..), Value, fromSomeValue, fromSomeValue', toSomeValue)
 import Codec.Serialise (Serialise)
 import Data.Char (toUpper)
+import Data.Constraint (Class (..), Dict (..), (:-) (..))
 import Data.HashMap.Strict qualified as HashMap
 import Database.SQLite.Simple qualified as SQLite
-import DiscoverInstances (Class (..), Dict (..), SomeDict, SomeDictOf (..), (:-) (..))
 import Language.Haskell.TH qualified as TH
 import Language.Haskell.TH.Syntax (Lift)
 import Language.Haskell.TH.Syntax qualified as TH
+import SomeDictOf (SomeDict, SomeDictOf (..))
 import VarArgs ((:->:))
 
 type TaskState = Static.TaskState SomeValue SomeValue

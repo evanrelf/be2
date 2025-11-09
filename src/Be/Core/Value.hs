@@ -13,9 +13,10 @@ where
 import Be.Core.Registry (lookupInstance)
 import Codec.Serialise (Serialise (..))
 import Codec.Serialise.Decoding (decodeListLenOf)
-import DiscoverInstances (Class (..), Dict (..), SomeDictOf (..), (:-) (..))
-import Type.Reflection (TypeRep, (:~~:) (..), eqTypeRep, typeRep)
+import Data.Constraint (Class (..), Dict (..), (:-) (..))
+import SomeDictOf (SomeDictOf (..))
 import Text.Show (showsPrec)
+import Type.Reflection (TypeRep, (:~~:) (..), eqTypeRep, typeRep)
 
 class (Typeable a, Show a, Serialise a, Hashable a) => Value a
 
