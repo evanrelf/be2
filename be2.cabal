@@ -44,8 +44,8 @@ library
   import: common
   hs-source-dirs: src
   build-depends:
-    , annotated-exception
     , ChibiHash
+    , annotated-exception
     , discover-instances
     , optparse-applicative
     , serialise

@@ -1,20 +1,5 @@
 {-# LANGUAGE QuasiQuotes #-}
 
--- | SQLite-backed persistent trace storage for incremental builds.
---
--- A trace records the relationship between a key, its dependencies (with hashes),
--- and the resulting value. Traces are immutable and content-addressed by hash.
---
--- Database schema:
---   * traces: (id, key_blob, value_blob, trace_hash)
---   * trace_deps: (trace_id, dep_key_blob, dep_value_hash_blob)
---
--- Immutability is enforced via SQLite triggers - any attempt to UPDATE traces
--- or trace_deps will raise an error.
---
--- REVIEW: The immutability-via-triggers approach is clever! However, it means
--- errors are discovered at runtime rather than being prevented by the type system.
--- This is probably acceptable given the constraints, but worth noting.
 module Be.Core.Trace
   ( Trace (..)
   , dbDrop
@@ -27,11 +12,12 @@ where
 import Be.Core.Hash (Hash (..), hash)
 import Be.Core.Value (Value)
 import Codec.Serialise (Serialise, deserialise, serialise)
-import Control.Exception (assert, onException)
+import Control.Exception (assert)
 import Data.HashMap.Strict qualified as HashMap
 import Data.String.Interpolate (iii)
 import Database.SQLite.Simple qualified as SQLite
 import Prelude hiding (trace, traceId)
+import UnliftIO.Exception (onException)
 
 data Trace k v = Trace
   { key :: k
@@ -141,29 +127,6 @@ fetchTraces connection mKey = liftIO do
 
     pure trace
 
--- | Insert a trace into the database (with de-duplication).
---
--- Traces are identified by their content hash. If a trace with the same hash
--- already exists, this function:
--- 1. Prints a warning to stdout
--- 2. Rolls back the transaction
--- 3. Returns the existing trace ID
---
--- This de-duplication prevents storing identical traces multiple times, saving
--- disk space.
---
--- REVIEW: The manual transaction handling here is somewhat fragile. The
--- 'onException' handler ensures rollback on error, but consider using bracket-style
--- resource management or SQLite.withTransaction for more robust cleanup.
---
--- REVIEW: The warning goes to stdout via 'putStrLn'. This appears in test output
--- (see DynamicTest). Consider using a proper logging framework or making this
--- configurable (debug mode?).
---
--- REVIEW: The de-duplication check uses 'changes() == 0', which is a clever way
--- to detect "insert or ignore" conflicts. However, the subsequent query could
--- theoretically fail if the trace was deleted between operations (though triggers
--- prevent this in practice).
 insertTrace :: (Value k, Value v, MonadIO m) => SQLite.Connection -> Trace k v -> m Int64
 insertTrace connection trace = liftIO do
   flip onException (SQLite.execute_ connection "rollback") do
