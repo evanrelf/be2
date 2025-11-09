@@ -10,8 +10,11 @@ module Be.Format
 where
 
 import Be.Core.Build
+import Data.ByteString.Char8 qualified as ByteString
+import Data.Set qualified as Set
 import Options.Applicative qualified as Options
 import Prelude hiding (stdin)
+import System.Process.Typed qualified as Process
 import UnliftIO.Async qualified as Async
 
 data Options = Options
@@ -92,16 +95,24 @@ runNix :: NixOptions -> IO ()
 runNix _options = do
   pure ()
 
+exec :: MonadIO m => FilePath -> [String] -> m LByteString
+exec program args = Process.readProcessStdout_ (Process.proc program args)
+
 gitRoot :: Build FilePath
 gitRoot = do
-  undefined
+  pathBytes <- exec "git" ["rev-parse", "--show-toplevel"]
+  let path = decodeUtf8 (ByteString.strip (toStrict pathBytes))
+  pure path
 
 registerTaskVolatile 'gitRoot
 
--- TODO: Resolve all symlinks (i.e. `realpath`).
-which :: Text -> Build FilePath
+which :: String -> Build FilePath
 which name = do
-  undefined
+  initialPathBytes <- exec "which" [name]
+  let initialPath = decodeUtf8 (ByteString.strip (toStrict initialPathBytes))
+  realPathBytes <- exec "realpath" [initialPath]
+  let realPath = decodeUtf8 (ByteString.strip (toStrict realPathBytes))
+  pure realPath
 
 registerTaskVolatile 'which
 
@@ -113,7 +124,7 @@ fourmoluConfig = do
 
 registerTaskVolatile 'fourmoluConfig
 
-fourmoluExtensions :: Build (Set Text)
+fourmoluExtensions :: Build (Set String)
 fourmoluExtensions = do
   undefined
 
@@ -121,6 +132,18 @@ registerTaskVolatile 'fourmoluExtensions
 
 fourmolu :: FilePath -> ByteString -> Build ByteString
 fourmolu path bytes = do
-  undefined
+  binary <- realize Which "fourmolu"
+  config <- realize FourmoluConfig
+  extensions <- realize FourmoluExtensions
+  let args =
+        [ "--config=" <> config
+        , "--no-cabal"
+        , "--stdin-input-file=" <> path
+        , "--mode=stdout"
+        , "--source-type=module"
+        , "--unsafe"
+        , "--quiet"
+        ] <> map ("--ghc-opt=-X" <>) (Set.toList extensions)
+  pure undefined
 
 registerTask 'fourmolu

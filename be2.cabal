@@ -46,12 +46,14 @@ library
   build-depends:
     , ChibiHash
     , annotated-exception
+    , bytestring
     , discover-instances
     , optparse-applicative
     , serialise
     , sqlite-simple
     , string-interpolate
     , template-haskell
+    , typed-process
     , unliftio
     , varargs
   exposed-modules:
