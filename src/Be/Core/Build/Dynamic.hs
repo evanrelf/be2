@@ -15,6 +15,7 @@ module Be.Core.Build.Dynamic
 
   , initBuild
   , registerTask
+  , registerTaskVolatile
   , registerTaskWith
   )
 where
@@ -127,6 +128,10 @@ initBuild =
 
 registerTask :: TH.Name -> TH.Q [TH.Dec]
 registerTask funName = registerTaskWith funName defaultTaskOptions
+
+registerTaskVolatile :: TH.Name -> TH.Q [TH.Dec]
+registerTaskVolatile funName =
+  registerTaskWith funName defaultTaskOptions{ volatile = True }
 
 registerTaskWith :: TH.Name -> TaskOptions -> TH.Q [TH.Dec]
 registerTaskWith funName options = do

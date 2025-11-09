@@ -96,14 +96,14 @@ gitRoot :: Build FilePath
 gitRoot = do
   undefined
 
-registerTaskWith 'gitRoot defaultTaskOptions{ volatile = True }
+registerTaskVolatile 'gitRoot
 
 -- TODO: Resolve all symlinks (i.e. `realpath`).
 which :: Text -> Build FilePath
 which name = do
   undefined
 
-registerTaskWith 'which defaultTaskOptions{ volatile = True }
+registerTaskVolatile 'which
 
 -- TODO: Place copy in consistent location (e.g. `~/.cache/be2/fourmolu-<hash>.yaml`).
 -- TODO: Register temporary file as resource to be cleaned up at end of program.
@@ -111,13 +111,13 @@ fourmoluConfig :: Build FilePath
 fourmoluConfig = do
   undefined
 
-registerTaskWith 'fourmoluConfig defaultTaskOptions{ volatile = True }
+registerTaskVolatile 'fourmoluConfig
 
 fourmoluExtensions :: Build (Set Text)
 fourmoluExtensions = do
   undefined
 
-registerTaskWith 'fourmoluExtensions defaultTaskOptions{ volatile = True }
+registerTaskVolatile 'fourmoluExtensions
 
 fourmolu :: FilePath -> ByteString -> Build ByteString
 fourmolu path bytes = do
