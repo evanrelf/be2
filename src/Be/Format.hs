@@ -1,4 +1,6 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Be.Format
   ( Options (..)
@@ -7,6 +9,7 @@ module Be.Format
   )
 where
 
+import Be.Core.Build
 import Options.Applicative qualified as Options
 import Prelude hiding (stdin)
 import UnliftIO.Async qualified as Async
@@ -88,3 +91,36 @@ runHaskell _options = do
 runNix :: NixOptions -> IO ()
 runNix _options = do
   pure ()
+
+gitRoot :: Build FilePath
+gitRoot = do
+  undefined
+
+registerTaskWith 'gitRoot defaultTaskOptions{ volatile = True }
+
+-- TODO: Resolve all symlinks (i.e. `realpath`).
+which :: Text -> Build FilePath
+which name = do
+  undefined
+
+registerTaskWith 'which defaultTaskOptions{ volatile = True }
+
+-- TODO: Place copy in consistent location (e.g. `~/.cache/be2/fourmolu-<hash>.yaml`).
+-- TODO: Register temporary file as resource to be cleaned up at end of program.
+fourmoluConfig :: Build FilePath
+fourmoluConfig = do
+  undefined
+
+registerTaskWith 'fourmoluConfig defaultTaskOptions{ volatile = True }
+
+fourmoluExtensions :: Build (Set Text)
+fourmoluExtensions = do
+  undefined
+
+registerTaskWith 'fourmoluExtensions defaultTaskOptions{ volatile = True }
+
+fourmolu :: FilePath -> ByteString -> Build ByteString
+fourmolu path bytes = do
+  undefined
+
+registerTask 'fourmolu
