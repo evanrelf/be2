@@ -133,6 +133,8 @@ registerTaskVolatile :: TH.Name -> TH.Q [TH.Dec]
 registerTaskVolatile funName =
   registerTaskWith funName defaultTaskOptions{ volatile = True }
 
+-- TODO: Consider any task with zero arguments as volatile, overriding the
+-- user's option.
 registerTaskWith :: TH.Name -> TaskOptions -> TH.Q [TH.Dec]
 registerTaskWith funName options = do
   info <- TH.reify funName
