@@ -44,6 +44,7 @@ library
   import: common
   hs-source-dirs: src
   build-depends:
+    , annotated-exception
     , ChibiHash
     , discover-instances
     , optparse-applicative
@@ -80,6 +81,7 @@ test-suite test
   main-is: Driver.hs
   hs-source-dirs: test
   build-depends:
+    , annotated-exception
     , be2
     , hedgehog
     , serialise
@@ -88,6 +90,7 @@ test-suite test
     , tasty-discover
     , tasty-hedgehog
     , tasty-hunit
+    , unliftio
   other-modules:
     Be.Core.Build.DynamicTest
     Be.Core.Build.StaticTest

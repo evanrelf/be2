@@ -3,6 +3,33 @@
 {-# LANGUAGE TypeAbstractions #-}
 {-# LANGUAGE TypeFamilyDependencies #-}
 
+-- | High-level task DSL built on top of "Be.Core.Build.Static".
+--
+-- This module provides an ergonomic, type-safe interface for defining build tasks
+-- using Template Haskell. Key features:
+--
+-- * 'registerTask' TH macro: Generates Task instances from regular functions
+-- * 'realize': Invoke tasks with natural function call syntax
+-- * 'initBuild' TH macro: Discovers and registers all Value/Task instances at compile time
+-- * Dynamic dispatch through runtime type registry
+--
+-- Example usage:
+--
+-- @
+--   readFile :: FilePath -> Build ByteString
+--   readFile path = ...
+--
+--   registerTask 'readFile
+--
+--   main = do
+--     $$initBuild
+--     runBuild connection $ realize ReadFile "/foo/bar.txt"
+-- @
+--
+-- REVIEW: The Template Haskell approach is powerful but has tradeoffs:
+-- * Pro: Eliminates boilerplate, natural API
+-- * Con: Compile-time complexity, harder to debug type errors
+-- * Con: Generates types at TH time (ReadFile, ReadFileKey, etc.) which pollute namespace
 module Be.Core.Build.Dynamic
   ( Build (..)
   , unwrapBuild
@@ -32,8 +59,16 @@ import Language.Haskell.TH.Syntax (Lift)
 import Language.Haskell.TH.Syntax qualified as TH
 import VarArgs ((:->:))
 
+-- | Type alias for the low-level task state, specialized to SomeValue.
+-- This allows the high-level API to work with heterogeneous task types.
 type TaskState = Static.TaskState SomeValue SomeValue
 
+-- | The Build monad: context for executing build tasks.
+--
+-- This is a ReaderT over IO, carrying the TaskState. Tasks use this monad to:
+-- 1. Realize dependencies via 'realize'
+-- 2. Perform arbitrary IO
+-- 3. Track their own dependencies automatically
 newtype Build a = Build (ReaderT TaskState IO a)
   deriving newtype (Functor, Applicative, Monad, MonadIO)
 
@@ -51,6 +86,25 @@ realize :: Task a => a -> TaskArgs a :->: Build (TaskResult a)
 realize sing = curryN \(args :: TupleArgs (TaskArgs a)) -> do
   uncurryN (taskRealize @a (Identity sing)) args :: Build (TaskResult a)
 
+-- | Typeclass for registering build tasks.
+--
+-- This is a complex class with several associated types and coercibility constraints.
+-- The Template Haskell machinery in 'registerTask' generates these instances
+-- automatically, so users rarely need to understand the details.
+--
+-- Associated types:
+-- * 'TaskArgs': Type-level list of argument types
+-- * 'TaskResult': Return type (the 'a' in 'Build a')
+-- * 'TaskKey': Newtype wrapper around tuple of arguments (for serialization)
+-- * 'TaskValue': Newtype wrapper around result (for serialization)
+--
+-- The Coercible constraints ensure zero-cost conversion between the user-facing
+-- types (arguments, result) and the internal wrapper types (TaskKey, TaskValue).
+--
+-- REVIEW: This is sophisticated type-level programming! The use of injective type
+-- families (via '= (r :: Type) |') and functional dependencies in CurryN ensures
+-- type inference works smoothly. However, the complexity is non-trivial. Consider
+-- adding more examples in documentation.
 type Task :: Type -> Constraint
 class
   ( Typeable a
@@ -231,9 +285,25 @@ registerTaskWith funName options = do
       , taskBuildFun
       ]
 
+-- | Existential wrapper for task handlers.
+-- Each handler knows how to execute a specific task type.
 data TaskHandler where
   TaskHandler :: Task a => (TaskKey a -> Build (TaskValue a, Bool)) -> TaskHandler
 
+-- | Dynamic dispatch: route a SomeValue key to the appropriate task handler.
+--
+-- This function implements type-safe dynamic dispatch by:
+-- 1. Retrieving all registered Task instances from the runtime registry
+-- 2. Converting each to a TaskHandler (erasing the concrete type)
+-- 3. Attempting to match the input key against each handler's expected type
+-- 4. Executing the first matching handler
+--
+-- REVIEW: This is a linear search through all registered tasks! For a small number
+-- of tasks this is fine, but could become a bottleneck with hundreds of task types.
+-- Consider using a HashMap keyed by TypeRep for O(1) lookup instead of foldr.
+--
+-- REVIEW: The fallback error message is helpful, but occurs at runtime. With TH,
+-- we could potentially detect missing Task instances at compile time.
 getTasks :: SomeValue -> Build (SomeValue, Bool)
 getTasks someKey@(SomeValue t _) = do
   let instances = getInstances @Task
@@ -249,6 +319,26 @@ getTasks someKey@(SomeValue t _) = do
   let fallback = error $ "No handler for task `" <> show t <> "`; `Task` instance missing from registry"
   foldr tryHandler fallback taskHandlers
 
+-- | Type-level currying/uncurrying for variadic task arguments.
+--
+-- This typeclass bridges between type-level lists of arguments and actual function
+-- types. The injective type family 'TupleArgs' ensures bidirectional type inference.
+--
+-- Examples:
+--   CurryN '[]          => TupleArgs = ()
+--   CurryN '[a]         => TupleArgs = Identity a
+--   CurryN '[a, b]      => TupleArgs = (a, b)
+--   CurryN '[a, b, c]   => TupleArgs = (a, b, c)
+--
+-- The use of Identity for single-argument tasks avoids special-casing in the
+-- serialization logic (everything is a "tuple", even singletons).
+--
+-- REVIEW: Limited to 0-4 arguments. This is probably sufficient for most use cases,
+-- but if you need more, you'll need to add instances manually. Consider using a
+-- library like 'varargs' more extensively, or generating instances with TH.
+--
+-- REVIEW: The injective type family is crucial here - without it, type inference
+-- would fail in 'realize' and 'registerTask'. Well done!
 type CurryN :: [Type] -> Constraint
 class CurryN args where
   type TupleArgs args = (r :: Type) | r -> args
