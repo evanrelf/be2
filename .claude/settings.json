@@ -1,8 +1,4 @@
 {
-  "sandbox": {
-    "enabled": true,
-    "autoAllowBashIfSandboxed": false
-  },
   "permissions": {
     "allow": [
       "Bash(cabal build:*)",
