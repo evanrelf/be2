@@ -39,8 +39,12 @@
             inputsFrom = [ config.packages.be2.env ];
             packages = [
               pkgs.cabal-install
+              pkgs.cargo
+              pkgs.clippy
               pkgs.ghciwatch-compat-ghcid
               pkgs.nixpkgs-fmt
+              pkgs.rustc
+              pkgs.rustfmt
             ];
           };
       };
