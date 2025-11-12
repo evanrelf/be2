@@ -39,10 +39,7 @@ instance Eq SomeValue where
       Nothing -> False
 
 instance Hashable SomeValue where
-  -- TODO: Hash `show typeRep` rather than `typeRep` for more stable hashing?
-  -- Otherwise `42 :: Int` and `42 :: Word64` serialize to the same CBOR and get
-  -- the same hash.
-  hashWithSalt salt (SomeValue _ x) = hashWithSalt salt x
+  hashWithSalt salt (SomeValue t x) = hashWithSalt salt (t, x)
 
 instance Serialise SomeValue where
   encode (SomeValue t x) = encode (t, x)
