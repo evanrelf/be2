@@ -31,7 +31,9 @@
         packages = {
           default = config.packages.be2;
 
-          be2 = pkgs.haskellPackages.callCabal2nix "be2" ./. { };
+          be2 =
+            pkgs.haskell.lib.justStaticExecutables
+              (pkgs.haskellPackages.callCabal2nix "be2" ./. { });
         };
 
         devShells.default =
