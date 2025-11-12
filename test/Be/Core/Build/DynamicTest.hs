@@ -5,7 +5,7 @@ module Be.Core.Build.DynamicTest where
 
 import Be.Core.Build.Dynamic
 import Be.Core.Build.Static (BuildState (..), TaskState (..))
-import Be.Core.Hash (Hash (..))
+import Be.Core.Hash (BeHash (..))
 import Be.Core.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
 import Be.Core.Value (SomeValue, Value, toSomeValue)
 import Data.HashMap.Strict qualified as HashMap
@@ -89,13 +89,13 @@ unit_build_system_dynamic = do
                 { key = toSomeValue (ConcatKey "/files")
                 , deps = HashMap.fromList
                     [ ( toSomeValue (ReadFileKey "/files")
-                      , Hash 4667841580189462423
+                      , BeHash 4667841580189462423
                       )
                     , ( toSomeValue (ReadFileKey "/files/a")
-                      , Hash 16623056052819200894
+                      , BeHash 16623056052819200894
                       )
                     , ( toSomeValue (ReadFileKey "/files/b")
-                      , Hash 14687783424159735648
+                      , BeHash 14687783424159735648
                       )
                     ]
                 , value = toSomeValue (ConcatValue (toBytes "AAAA\nAAAA\nBBBB\n"))

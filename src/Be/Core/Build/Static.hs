@@ -9,7 +9,7 @@ module Be.Core.Build.Static
   )
 where
 
-import Be.Core.Hash (Hash, hash)
+import Be.Core.Hash (BeHash, beHash)
 import Be.Core.Trace (Trace (..), fetchTraces, insertTrace)
 import Be.Core.Value (Value)
 import Control.Exception (assert)
@@ -94,12 +94,12 @@ buildStateFetch buildState key = do
   matches :: HashSet v <-
     HashSet.fromList . map (.value) <$> do
       traces & filterM \trace -> do
-        assert (hash trace.key == hash key) $ pure ()
+        assert (beHash trace.key == beHash key) $ pure ()
         HashMap.toList trace.deps & allConcurrently \(depKey, depValueHash) -> do
           -- TODO: Wrap possible exception from failure to realize in checkpoint
           -- indicating this unexpectedly happened during fetch.
           depValue <- buildStateRealize buildState depKey
-          pure (depValueHash == hash depValue)
+          pure (depValueHash == beHash depValue)
 
   store <- readTVarIO buildState.store
 
@@ -123,7 +123,7 @@ buildStateBuild buildState key = do
 
 data TaskState k v = TaskState
   { buildState :: BuildState k v
-  , deps :: TVar (HashMap k Hash)
+  , deps :: TVar (HashMap k BeHash)
   }
 
 newTaskState :: BuildState k v -> STM (TaskState k v)
@@ -134,7 +134,7 @@ newTaskState buildState = do
 taskStateRealize :: (Value k, Value v) => TaskState k v -> k -> IO v
 taskStateRealize taskState key = do
   value <- buildStateRealize taskState.buildState key
-  atomically $ modifyTVar' taskState.deps $ HashMap.insert key (hash value)
+  atomically $ modifyTVar' taskState.deps $ HashMap.insert key (beHash value)
   pure value
 
 allConcurrently

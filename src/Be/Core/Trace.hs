@@ -9,7 +9,7 @@ module Be.Core.Trace
   )
 where
 
-import Be.Core.Hash (Hash (..), hash)
+import Be.Core.Hash (BeHash (..), beHash)
 import Be.Core.Value (Value)
 import Codec.Serialise (Serialise, deserialise, serialise)
 import Control.Exception (assert)
@@ -21,7 +21,7 @@ import UnliftIO.Exception (onException)
 
 data Trace k v = Trace
   { key :: k
-  , deps :: HashMap k Hash
+  , deps :: HashMap k BeHash
   , value :: v
   }
   deriving stock (Generic, Eq, Show)
@@ -109,7 +109,7 @@ fetchTraces connection mKey = liftIO do
         "select dep_key, dep_value_hash from trace_deps where trace_id = ?"
         (SQLite.Only traceId)
 
-    deps :: [(k, Hash)] <-
+    deps :: [(k, BeHash)] <-
       forM depsRows \(depKeyBytes, depValueHashBytes) -> do
         let depKey = deserialise depKeyBytes
         let depValueHash = deserialise depValueHashBytes
@@ -123,7 +123,7 @@ fetchTraces connection mKey = liftIO do
           , value = traceValue
           }
 
-    assert (hash trace == traceHash) $ pure ()
+    assert (beHash trace == traceHash) $ pure ()
 
     pure trace
 
@@ -134,7 +134,7 @@ insertTrace connection trace = liftIO do
 
     let keyBytes = serialise trace.key
     let valueBytes = serialise trace.value
-    let traceHashBytes = serialise (hash trace)
+    let traceHashBytes = serialise (beHash trace)
 
     SQLite.execute
       connection

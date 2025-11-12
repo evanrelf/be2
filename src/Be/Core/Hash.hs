@@ -1,15 +1,21 @@
+{-# LANGUAGE UndecidableInstances #-}
+
 module Be.Core.Hash
-  ( Hash (..)
-  , hash
+  ( BeHash (..)
+  , BeHashable (..)
   )
 where
 
 import ChibiHash (chibihash64)
 import Codec.Serialise (Serialise, serialise)
 
-newtype Hash = Hash Word64
+newtype BeHash = BeHash Word64
   deriving stock (Show)
   deriving newtype (Eq, Serialise)
 
-hash :: Serialise a => a -> Hash
-hash x = Hash (chibihash64 (toStrict (serialise x)) 0)
+class BeHashable a where
+  beHash :: a -> BeHash
+
+instance {-# OVERLAPPABLE #-} Serialise a => BeHashable a where
+  beHash :: a -> BeHash
+  beHash x = BeHash (chibihash64 (toStrict (serialise x)) 0)

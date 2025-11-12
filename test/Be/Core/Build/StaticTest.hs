@@ -4,7 +4,7 @@
 module Be.Core.Build.StaticTest where
 
 import Be.Core.Build.Static
-import Be.Core.Hash (Hash (..))
+import Be.Core.Hash (BeHash (..))
 import Be.Core.Trace (Trace (..), dbCreate, dbDrop, fetchTraces)
 import Be.Core.Value (Value)
 import Codec.Serialise (Serialise)
@@ -123,13 +123,13 @@ unit_build_system_static = do
               { key = Key_Concat "/files"
               , deps = HashMap.fromList
                   [ ( Key_ReadFile "/files"
-                    , Hash 217649648357837811
+                    , BeHash 217649648357837811
                     )
                   , ( Key_ReadFile "/files/a"
-                    , Hash 7664945061632064206
+                    , BeHash 7664945061632064206
                     )
                   , ( Key_ReadFile "/files/b"
-                    , Hash 2092587128809980294
+                    , BeHash 2092587128809980294
                     )
                   ]
               , value = Value_Concat (toBytes "AAAA\nAAAA\nBBBB\n")

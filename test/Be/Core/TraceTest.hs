@@ -2,7 +2,7 @@
 
 module Be.Core.TraceTest where
 
-import Be.Core.Hash (Hash (..))
+import Be.Core.Hash (BeHash (..))
 import Be.Core.Trace
 import Be.Core.Value (Value)
 import Data.HashMap.Strict qualified as HashMap
@@ -19,7 +19,7 @@ unit_trace_roundtrip =
     dbCreate connection
 
     let key = "password"
-    let deps = HashMap.singleton "answer" (Hash 42)
+    let deps = HashMap.singleton "answer" (BeHash 42)
     let value = "hunter2"
     let trace :: Trace Text Text
         trace = Trace{ key, deps, value }

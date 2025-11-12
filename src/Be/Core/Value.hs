@@ -10,6 +10,7 @@ module Be.Core.Value
   )
 where
 
+import Be.Core.Hash (BeHashable (..))
 import Be.Core.Registry (lookupInstance)
 import Codec.Serialise (Serialise (..))
 import Codec.Serialise.Decoding (decodeListLenOf)
@@ -18,7 +19,7 @@ import SomeDictOf (SomeDictOf (..))
 import Text.Show (showsPrec)
 import Type.Reflection (TypeRep, (:~~:) (..), eqTypeRep, typeRep)
 
-class (Typeable a, Show a, Serialise a, Hashable a) => Value a
+class (Typeable a, Show a, Serialise a, BeHashable a, Hashable a) => Value a
 
 instance Class (Typeable a) (Value a) where
   cls = Sub Dict
