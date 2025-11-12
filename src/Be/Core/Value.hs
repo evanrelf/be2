@@ -17,7 +17,7 @@ import Codec.Serialise.Decoding (decodeListLenOf)
 import Data.Constraint (Class (..), Dict (..), (:-) (..))
 import SomeDictOf (SomeDictOf (..))
 import Text.Show (showsPrec)
-import Type.Reflection (TypeRep, (:~~:) (..), eqTypeRep, typeRep)
+import Type.Reflection (TypeRep, (:~~:) (..), eqTypeRep, tyConName, typeRep, typeRepTyCon)
 
 class (Typeable a, Show a, Serialise a, BeHashable a, Hashable a) => Value a
 
@@ -41,6 +41,9 @@ instance Eq SomeValue where
 
 instance Hashable SomeValue where
   hashWithSalt salt (SomeValue t x) = hashWithSalt salt (t, x)
+
+instance BeHashable SomeValue where
+  beHash (SomeValue t x) = beHash (tyConName (typeRepTyCon t), x)
 
 instance Serialise SomeValue where
   encode (SomeValue t x) = encode (t, x)

@@ -89,13 +89,13 @@ unit_build_system_dynamic = do
                 { key = toSomeValue (ConcatKey "/files")
                 , deps = HashMap.fromList
                     [ ( toSomeValue (ReadFileKey "/files")
-                      , BeHash 4667841580189462423
+                      , BeHash 16581488001577682600
                       )
                     , ( toSomeValue (ReadFileKey "/files/a")
-                      , BeHash 16623056052819200894
+                      , BeHash 16650685630470072892
                       )
                     , ( toSomeValue (ReadFileKey "/files/b")
-                      , BeHash 14687783424159735648
+                      , BeHash 1884633370191687281
                       )
                     ]
                 , value = toSomeValue (ConcatValue (toBytes "AAAA\nAAAA\nBBBB\n"))
