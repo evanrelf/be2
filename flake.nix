@@ -34,6 +34,13 @@
           be2 =
             pkgs.haskell.lib.justStaticExecutables
               (pkgs.haskellPackages.callCabal2nix "be2" ./. { });
+
+          be2-parser =
+            pkgs.rustPlatform.buildRustPackage (attrs: {
+              name = "be2-parser";
+              src = ./tools/be2-parser;
+              cargoLock.lockFile = "${attrs.src}/Cargo.lock";
+            });
         };
 
         devShells.default =
