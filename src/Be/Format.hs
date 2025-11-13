@@ -10,12 +10,20 @@ module Be.Format
 where
 
 import Be.Core.Build
-import Data.ByteString.Char8 qualified as ByteString
+import Data.ByteString qualified as ByteString
+import Data.ByteString.Char8 qualified as Char8
+import Data.ByteString.Lazy qualified as LByteString
 import Data.Set qualified as Set
+import Database.SQLite.Simple qualified as SQLite
 import Options.Applicative qualified as Options
-import Prelude hiding (stdin)
+import Prelude hiding (readFile, stderr, stdin, stdout)
+import System.Environment.XDG.BaseDir qualified as XDG
+import System.Exit (ExitCode (..))
+import System.FilePath ((</>))
 import System.Process.Typed qualified as Process
 import UnliftIO.Async qualified as Async
+import UnliftIO.IO qualified as IO
+import UnliftIO.IO.File qualified as IO
 
 data Options = Options
   { command :: Maybe Command
@@ -77,31 +85,19 @@ parser = Options.info parse info
 
     pure Options{ command }
 
-run :: Options -> IO ()
-run options = do
-  case options.command of
-    Just (Haskell haskellOptions) -> runHaskell haskellOptions
-    Just (Nix nixOptions) -> runNix nixOptions
-    Nothing -> do
-      Async.concurrently_
-        (runHaskell HaskellOptions{ input = Nothing })
-        (runNix NixOptions{ input = Nothing })
-
-runHaskell :: HaskellOptions -> IO ()
-runHaskell _options = do
-  pure ()
-
-runNix :: NixOptions -> IO ()
-runNix _options = do
-  pure ()
+readFile :: MonadIO m => FilePath -> m LByteString
+readFile path = liftIO do
+  IO.withBinaryFile path IO.ReadMode \handle ->
+    LByteString.hGetContents handle
 
 exec :: MonadIO m => FilePath -> [String] -> m LByteString
-exec program args = Process.readProcessStdout_ (Process.proc program args)
+exec program args = Process.readProcessStdout_ config
+  where config = Process.proc program args
 
 gitRoot :: Build FilePath
 gitRoot = do
   pathBytes <- exec "git" ["rev-parse", "--show-toplevel"]
-  let path = decodeUtf8 (ByteString.strip (toStrict pathBytes))
+  let path = decodeUtf8 (Char8.strip (toStrict pathBytes))
   pure path
 
 registerTaskVolatile 'gitRoot
@@ -109,9 +105,9 @@ registerTaskVolatile 'gitRoot
 which :: String -> Build FilePath
 which name = do
   initialPathBytes <- exec "which" [name]
-  let initialPath = decodeUtf8 (ByteString.strip (toStrict initialPathBytes))
+  let initialPath = decodeUtf8 (Char8.strip (toStrict initialPathBytes))
   realPathBytes <- exec "realpath" [initialPath]
-  let realPath = decodeUtf8 (ByteString.strip (toStrict realPathBytes))
+  let realPath = decodeUtf8 (Char8.strip (toStrict realPathBytes))
   pure realPath
 
 registerTaskVolatile 'which
@@ -120,7 +116,9 @@ registerTaskVolatile 'which
 -- TODO: Register temporary file as resource to be cleaned up at end of program.
 fourmoluConfig :: Build FilePath
 fourmoluConfig = do
-  undefined
+  root <- realize GitRoot
+  let path = root </> "fourmolu.yaml"
+  pure undefined
 
 registerTaskVolatile 'fourmoluConfig
 
@@ -130,7 +128,11 @@ fourmoluExtensions = do
 
 registerTaskVolatile 'fourmoluExtensions
 
-fourmolu :: FilePath -> ByteString -> Build ByteString
+-- TODO: Canonicalize path.
+-- TODO: Sandbox process.
+-- TODO: Use process permits.
+-- TODO: Use file permits.
+fourmolu :: FilePath -> LByteString -> Build LByteString
 fourmolu path bytes = do
   binary <- realize Which "fourmolu"
   config <- realize FourmoluConfig
@@ -144,6 +146,59 @@ fourmolu path bytes = do
         , "--unsafe"
         , "--quiet"
         ] <> map ("--ghc-opt=-X" <>) (Set.toList extensions)
-  pure undefined
+  (exitCode, stdout, stderr) <- Process.readProcess $
+      Process.proc binary args
+    & Process.setEnv []
+    & Process.setWorkingDir "/var/empty"
+    & Process.setStdin (Process.byteStringInput bytes)
+  case exitCode of
+    ExitFailure code -> error . unlines $
+      [ "`fourmolu` exited with code " <> show code <> ":"
+      , decodeUtf8 stderr
+      ]
+    ExitSuccess -> pure stdout
 
 registerTask 'fourmolu
+
+formatHaskellInPlace :: FilePath -> Build Bool
+formatHaskellInPlace path = do
+  unformattedBytes <- readFile path
+  formattedBytes <- realize Fourmolu path unformattedBytes
+  if unformattedBytes == formattedBytes then
+    pure False
+  else do
+    IO.writeBinaryFileAtomic path (toStrict formattedBytes)
+    pure True
+
+registerTaskVolatile 'formatHaskellInPlace
+
+runHaskell :: HaskellOptions -> Build ()
+runHaskell options = do
+  case options.input of
+    Just Stdin -> do
+      input <- liftIO ByteString.getContents
+      output <- realize Fourmolu "/dev/stdin" (toLazy input)
+      liftIO $ LByteString.putStr output
+    Nothing -> do
+      -- TODO: Use changed paths from Git.
+      error "not yet implemented"
+    Just (Paths paths) -> do
+      Async.forConcurrently_ paths \path -> do
+        formatHaskellInPlace path
+
+runNix :: NixOptions -> Build ()
+runNix _options = do
+  pure ()
+
+run :: Options -> IO ()
+run options = do
+  sqlitePath <- XDG.getUserCacheFile "be2" "cache.sqlite"
+  SQLite.withConnection sqlitePath \connection -> do
+    runBuild connection do
+      case options.command of
+        Just (Haskell haskellOptions) -> runHaskell haskellOptions
+        Just (Nix nixOptions) -> runNix nixOptions
+        Nothing -> do
+          Async.concurrently_
+            (runHaskell HaskellOptions{ input = Nothing })
+            (runNix NixOptions{ input = Nothing })

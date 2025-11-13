@@ -32,12 +32,13 @@ import Language.Haskell.TH qualified as TH
 import Language.Haskell.TH.Syntax (Lift)
 import Language.Haskell.TH.Syntax qualified as TH
 import SomeDictOf (SomeDict, SomeDictOf (..))
+import UnliftIO (MonadUnliftIO)
 import VarArgs ((:->:))
 
 type TaskState = Static.TaskState SomeValue SomeValue
 
 newtype Build a = Build (ReaderT TaskState IO a)
-  deriving newtype (Functor, Applicative, Monad, MonadIO)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadUnliftIO)
 
 unwrapBuild :: Build a -> (TaskState -> IO a)
 unwrapBuild (Build (ReaderT f)) = \s -> f s
@@ -116,6 +117,8 @@ defaultTaskOptions =
     { volatile = False
     }
 
+-- TODO: Somehow make `Value` and `Task` qualified types so you don't have to
+-- import them at the call site.
 initBuild :: TH.Code TH.Q (IO ())
 initBuild =
   [|| do

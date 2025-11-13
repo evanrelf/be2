@@ -45,10 +45,12 @@ library
   hs-source-dirs: src
   build-depends:
     , ChibiHash
+    , aeson
     , annotated-exception
     , bytestring
     , constraints
     , optparse-applicative
+    , resourcet
     , serialise
     , some-dict-of
     , sqlite-simple
@@ -57,6 +59,8 @@ library
     , typed-process
     , unliftio
     , varargs
+    , xdg-basedir
+    , yaml
   exposed-modules:
     , Be
     , Be.Core.Build

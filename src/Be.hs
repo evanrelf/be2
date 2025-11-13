@@ -1,7 +1,10 @@
 {-# LANGUAGE ApplicativeDo #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Be (main) where
 
+import Be.Core.Build (Task, initBuild)
+import Be.Core.Value (Value)
 import Be.Format qualified as Format
 import Be.Lint qualified as Lint
 import Options.Applicative qualified as Options
@@ -41,6 +44,8 @@ getOptions = do
 
 main :: IO ()
 main = do
+  $$initBuild
+
   options <- getOptions
 
   case options.command of
