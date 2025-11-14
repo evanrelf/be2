@@ -1,9 +1,10 @@
 mod common;
 mod haskell;
 
+use crate::common::{node_text, query_structured};
 use camino::Utf8PathBuf;
 use clap::Parser as _;
-use std::{fs, io};
+use std::{collections::HashMap, fs, io};
 
 #[derive(clap::ValueEnum, Clone)]
 enum Language {
@@ -12,9 +13,11 @@ enum Language {
 
 #[derive(clap::Parser)]
 struct Args {
-    path: Option<Utf8PathBuf>,
     #[arg(long)]
     lang: Language,
+    #[arg(long)]
+    query: Option<String>,
+    path: Option<Utf8PathBuf>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -28,8 +31,21 @@ fn main() -> anyhow::Result<()> {
     match &args.lang {
         Language::Haskell => {
             let cx = haskell::init(input)?;
-            let output = haskell::parse(&cx)?;
-            serde_json::to_writer(io::stdout(), &output)?;
+            if let Some(query) = &args.query {
+                let match_maps = query_structured(&cx, query)?;
+                let mut output = Vec::with_capacity(match_maps.len());
+                for match_map in match_maps {
+                    let mut entry = HashMap::with_capacity(match_map.len());
+                    for (capture_name, node) in match_map {
+                        entry.insert(capture_name, node_text(&cx, &node));
+                    }
+                    output.push(entry);
+                }
+                serde_json::to_writer(io::stdout(), &output)?;
+            } else {
+                let output = haskell::parse(&cx)?;
+                serde_json::to_writer(io::stdout(), &output)?;
+            }
         }
     }
     Ok(())
