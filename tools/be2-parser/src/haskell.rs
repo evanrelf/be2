@@ -36,10 +36,31 @@ pub fn parse(cx: &Context) -> anyhow::Result<Haskell> {
 #[derive(Serialize)]
 struct Import {
     module: &'static str,
-    imports: &'static str,
+    imports: Option<&'static str>,
+    // TODO: Say whether qualified, and if as an alias
 }
 
+// TODO: Is it possible to query for optional attributes? Or do I have to write a new query for
+// every variation?
 fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
+    let mut imports = query_implicit_imports(cx)?;
+    imports.extend(query_explicit_imports(cx)?);
+    Ok(imports)
+}
+
+fn query_implicit_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
+    let nodes = query(cx, "(import module: (module) @module)")?;
+    let mut imports = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        imports.push(Import {
+            module: node_text(cx, &node).unwrap(),
+            imports: None,
+        });
+    }
+    Ok(imports)
+}
+
+fn query_explicit_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
     let nodes = query_structured(
         cx,
         "(import module: (module) @module names: (import_list) @imports)",
@@ -48,7 +69,7 @@ fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
     for node in nodes {
         imports.push(Import {
             module: node_text(cx, &node["module"]).unwrap(),
-            imports: node_text(cx, &node["imports"]).unwrap(),
+            imports: Some(node_text(cx, &node["imports"]).unwrap()),
         });
     }
     Ok(imports)
