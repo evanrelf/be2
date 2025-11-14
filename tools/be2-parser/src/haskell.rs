@@ -11,7 +11,7 @@ pub struct Haskell {
     declarations: Vec<Declaration>,
 }
 
-pub fn parse(source_code: &'static str) -> anyhow::Result<Haskell> {
+pub fn init(source_code: &'static str) -> anyhow::Result<Context> {
     let mut parser = Parser::new();
     let language = tree_sitter_haskell::LANGUAGE.into();
     parser.set_language(&language)?;
@@ -23,9 +23,13 @@ pub fn parse(source_code: &'static str) -> anyhow::Result<Haskell> {
         source_code,
         tree,
     };
+    Ok(cx)
+}
+
+pub fn parse(cx: &Context) -> anyhow::Result<Haskell> {
     Ok(Haskell {
-        imports: query_imports(&cx)?,
-        declarations: query_declarations(&cx)?,
+        imports: query_imports(cx)?,
+        declarations: query_declarations(cx)?,
     })
 }
 

@@ -27,7 +27,8 @@ fn main() -> anyhow::Result<()> {
     let input: &'static str = Box::leak(Box::new(input));
     match &args.lang {
         Language::Haskell => {
-            let output = haskell::parse(input)?;
+            let cx = haskell::init(input)?;
+            let output = haskell::parse(&cx)?;
             serde_json::to_writer(io::stdout(), &output)?;
         }
     }
