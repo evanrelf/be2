@@ -1,6 +1,6 @@
 #![allow(dead_code)] // TODO: Remove
 
-use crate::common::{Context, node_text, query};
+use crate::common::{Context, node_text, query, query_structured};
 use anyhow::Context as _;
 use serde::Serialize;
 use tree_sitter::{Node, Parser};
@@ -35,15 +35,20 @@ pub fn parse(cx: &Context) -> anyhow::Result<Haskell> {
 
 #[derive(Serialize)]
 struct Import {
-    module_name: &'static str,
+    module: &'static str,
+    imports: &'static str,
 }
 
 fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
-    let nodes = query(cx, "(haskell (imports (import module: (_) @import)))")?;
+    let nodes = query_structured(
+        cx,
+        "(import module: (module) @module names: (import_list) @imports)",
+    )?;
     let mut imports = Vec::with_capacity(nodes.len());
     for node in nodes {
         imports.push(Import {
-            module_name: node_text(cx, &node).unwrap(),
+            module: node_text(cx, &node["module"]).unwrap(),
+            imports: node_text(cx, &node["imports"]).unwrap(),
         });
     }
     Ok(imports)
