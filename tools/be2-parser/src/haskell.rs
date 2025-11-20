@@ -40,9 +40,8 @@ struct Import {
     qualified: bool,
     alias: Option<&'static str>,
     hiding: bool,
-    // TODO: Distinguish `import Foo` from `import Foo ()`
     // TODO: Rename this to something like "names" or whatever so when hiding it isn't confusing.
-    imports: Vec<&'static str>,
+    imports: Option<Vec<&'static str>>,
 }
 
 fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
@@ -68,11 +67,13 @@ fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
                 }
                 "import_list" => {
                     let mut list_cursor = child.walk();
+                    let mut imports = Vec::new();
                     for list_child in child.children(&mut list_cursor) {
                         if list_child.kind() == "import_name" {
-                            import.imports.push(node_text(cx, &list_child).unwrap());
+                            imports.push(node_text(cx, &list_child).unwrap());
                         }
                     }
+                    import.imports = Some(imports);
                 }
                 "hiding" => {
                     import.hiding = true;
@@ -178,7 +179,8 @@ mod tests {
         let cx = init(
             r#"
             import Foo (FooData (..), fooFun1, fooFun2)
-            import Bar ()
+            import Bar1
+            import Bar2 ()
             import qualified Baz
             import "qux" Qux qualified as Q
             import Prelude hiding (id)
@@ -191,15 +193,23 @@ mod tests {
                 qualified: false,
                 alias: None,
                 hiding: false,
-                imports: vec!["FooData (..)", "fooFun1", "fooFun2"],
+                imports: Some(vec!["FooData (..)", "fooFun1", "fooFun2"]),
             },
             Import {
                 package: None,
-                module: "Bar",
+                module: "Bar1",
                 qualified: false,
                 alias: None,
                 hiding: false,
-                imports: vec![],
+                imports: None,
+            },
+            Import {
+                package: None,
+                module: "Bar2",
+                qualified: false,
+                alias: None,
+                hiding: false,
+                imports: Some(vec![]),
             },
             Import {
                 package: None,
@@ -207,7 +217,7 @@ mod tests {
                 qualified: true,
                 alias: None,
                 hiding: false,
-                imports: vec![],
+                imports: None,
             },
             Import {
                 package: Some("qux"),
@@ -215,7 +225,7 @@ mod tests {
                 qualified: true,
                 alias: Some("Q"),
                 hiding: false,
-                imports: vec![],
+                imports: None,
             },
             Import {
                 package: None,
@@ -223,7 +233,7 @@ mod tests {
                 qualified: false,
                 alias: None,
                 hiding: true,
-                imports: vec!["id"],
+                imports: Some(vec!["id"]),
             },
         ];
         let actual_imports = query_imports(&cx)?;
