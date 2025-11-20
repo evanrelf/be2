@@ -39,7 +39,7 @@ struct Import {
     module: &'static str,
     qualified: bool,
     alias: Option<&'static str>,
-    // hiding: bool,
+    hiding: bool,
     // TODO: Distinguish `import Foo` from `import Foo ()`
     // TODO: Rename this to something like "names" or whatever so when hiding it isn't confusing.
     imports: Vec<&'static str>,
@@ -74,6 +74,9 @@ fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
                             import.imports.push(node_text(cx, &list_child).unwrap());
                         }
                     }
+                }
+                "hiding" => {
+                    import.hiding = true;
                 }
                 _ => {}
             }
@@ -188,6 +191,7 @@ mod tests {
                 module: "Foo",
                 qualified: false,
                 alias: None,
+                hiding: false,
                 imports: vec!["FooData (..)", "fooFun1", "fooFun2"],
             },
             Import {
@@ -195,6 +199,7 @@ mod tests {
                 module: "Bar",
                 qualified: false,
                 alias: None,
+                hiding: false,
                 imports: vec![],
             },
             Import {
@@ -202,6 +207,7 @@ mod tests {
                 module: "Baz",
                 qualified: true,
                 alias: None,
+                hiding: false,
                 imports: vec![],
             },
             Import {
@@ -209,6 +215,7 @@ mod tests {
                 module: "Qux",
                 qualified: true,
                 alias: Some("Q"),
+                hiding: false,
                 imports: vec![],
             },
             Import {
@@ -216,6 +223,7 @@ mod tests {
                 module: "Prelude",
                 qualified: false,
                 alias: None,
+                hiding: true,
                 imports: vec!["id"],
             },
         ];
