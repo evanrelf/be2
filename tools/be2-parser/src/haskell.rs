@@ -37,7 +37,7 @@ pub fn parse(cx: &Context) -> anyhow::Result<Haskell> {
 struct Import {
     package: Option<&'static str>,
     module: &'static str,
-    // qualified: bool,
+    qualified: bool,
     alias: Option<&'static str>,
     // hiding: bool,
     // TODO: Distinguish `import Foo` from `import Foo ()`
@@ -63,6 +63,9 @@ fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
                     } else {
                         import.alias = Some(node_text(cx, &child).unwrap());
                     }
+                }
+                "qualified" => {
+                    import.qualified = true;
                 }
                 "import_list" => {
                     let mut list_cursor = child.walk();
@@ -183,30 +186,35 @@ mod tests {
             Import {
                 package: None,
                 module: "Foo",
+                qualified: false,
                 alias: None,
                 imports: vec!["FooData (..)", "fooFun1", "fooFun2"],
             },
             Import {
                 package: None,
                 module: "Bar",
+                qualified: false,
                 alias: None,
                 imports: vec![],
             },
             Import {
                 package: None,
                 module: "Baz",
+                qualified: true,
                 alias: None,
                 imports: vec![],
             },
             Import {
                 package: Some("\"qux\""),
                 module: "Qux",
+                qualified: true,
                 alias: Some("Q"),
                 imports: vec![],
             },
             Import {
                 package: None,
                 module: "Prelude",
+                qualified: false,
                 alias: None,
                 imports: vec!["id"],
             },
