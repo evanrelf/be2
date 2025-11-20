@@ -7,6 +7,7 @@ use tree_sitter::{Node, Parser};
 
 #[derive(Serialize)]
 pub struct Haskell {
+    module_name: Option<&'static str>,
     imports: Vec<Import>,
     declarations: Vec<Declaration>,
 }
@@ -28,9 +29,19 @@ pub fn init(source_code: &'static str) -> anyhow::Result<Context> {
 
 pub fn parse(cx: &Context) -> anyhow::Result<Haskell> {
     Ok(Haskell {
+        module_name: query_module_name(cx)?,
         imports: query_imports(cx)?,
         declarations: query_declarations(cx)?,
     })
+}
+
+fn query_module_name(cx: &Context) -> anyhow::Result<Option<&'static str>> {
+    let nodes = query(cx, "(haskell (header (module) @module))")?;
+    if let Some(node) = nodes.first() {
+        Ok(Some(node_text(cx, node).unwrap()))
+    } else {
+        Ok(None)
+    }
 }
 
 #[derive(Debug, Default, PartialEq, Serialize)]
@@ -171,10 +182,27 @@ fn query_bind(cx: &Context) -> anyhow::Result<Vec<Node<'_>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_query_module_name() -> anyhow::Result<()> {
+        let cx = init("import Data.List")?;
+        let module_name = query_module_name(&cx)?;
+        assert_eq!(None, module_name);
+
+        let cx = init("module Foo.Bar where")?;
+        let module_name = query_module_name(&cx)?;
+        assert_eq!(Some("Foo.Bar"), module_name);
+
+        let cx = init("module Foo.Bar (Baz (..), qux) where")?;
+        let module_name = query_module_name(&cx)?;
+        assert_eq!(Some("Foo.Bar"), module_name);
+
+        Ok(())
+    }
 
     #[test]
     fn test_query_imports() -> anyhow::Result<()> {
-        use pretty_assertions::assert_eq;
         let cx = init(
             r#"
             import Foo (FooData (..), fooFun1, fooFun2)
@@ -185,6 +213,7 @@ mod tests {
             import Prelude hiding (id)
             "#,
         )?;
+
         let expected_imports = vec![
             Import {
                 package: None,
@@ -235,8 +264,10 @@ mod tests {
                 names: Some(vec!["id"]),
             },
         ];
+
         let actual_imports = query_imports(&cx)?;
         assert_eq!(expected_imports, actual_imports);
+
         Ok(())
     }
 }
