@@ -53,9 +53,8 @@ fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             match child.kind() {
-                // TODO: Strip double quotes surrounding package name
                 "import_package" => {
-                    import.package = Some(node_text(cx, &child).unwrap());
+                    import.package = Some(node_text(cx, &child).unwrap().trim_matches('"'));
                 }
                 "module" => {
                     if import.module.is_empty() {
@@ -211,7 +210,7 @@ mod tests {
                 imports: vec![],
             },
             Import {
-                package: Some("\"qux\""),
+                package: Some("qux"),
                 module: "Qux",
                 qualified: true,
                 alias: Some("Q"),
