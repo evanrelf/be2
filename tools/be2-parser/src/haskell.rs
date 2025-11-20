@@ -8,6 +8,7 @@ use tree_sitter::{Node, Parser};
 #[derive(Serialize)]
 pub struct Haskell {
     module_name: Option<&'static str>,
+    exports: Option<Vec<Export>>,
     imports: Vec<Import>,
     declarations: Vec<Declaration>,
 }
@@ -30,6 +31,7 @@ pub fn init(source_code: &'static str) -> anyhow::Result<Context> {
 pub fn parse(cx: &Context) -> anyhow::Result<Haskell> {
     Ok(Haskell {
         module_name: query_module_name(cx)?,
+        exports: query_exports(cx)?,
         imports: query_imports(cx)?,
         declarations: query_declarations(cx)?,
     })
@@ -42,6 +44,24 @@ fn query_module_name(cx: &Context) -> anyhow::Result<Option<&'static str>> {
     } else {
         Ok(None)
     }
+}
+
+#[derive(Debug, Default, PartialEq, Serialize)]
+struct Export {
+    text: &'static str,
+}
+
+fn query_exports(cx: &Context) -> anyhow::Result<Option<Vec<Export>>> {
+    if query(cx, "(haskell (header (exports) @exports))")?.is_empty() {
+        return Ok(None);
+    }
+    let nodes = query(cx, "(haskell (header (exports export: (_) @export)))")?;
+    let mut exports = Vec::new();
+    for node in nodes {
+        let text = node_text(cx, &node).unwrap();
+        exports.push(Export { text });
+    }
+    Ok(Some(exports))
 }
 
 #[derive(Debug, Default, PartialEq, Serialize)]
@@ -94,19 +114,6 @@ fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
         imports.push(import);
     }
     Ok(imports)
-}
-
-// fn query_exports(cx: &Context) -> anyhow::Result<Vec<Node<'_>>> {
-//     let explicit = query_explicit_exports(cx)?;
-//     if explicit.is_empty() {
-//         query_declarations(cx)
-//     } else {
-//         Ok(explicit)
-//     }
-// }
-
-fn query_explicit_exports(cx: &Context) -> anyhow::Result<Vec<Node<'_>>> {
-    query(cx, "(haskell (header (exports export: (_) @export)))")
 }
 
 #[derive(Serialize)]
@@ -261,6 +268,30 @@ mod tests {
         let cx = init("module Foo.Bar (Baz (..), qux) where")?;
         let module_name = query_module_name(&cx)?;
         assert_eq!(Some("Foo.Bar"), module_name);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_query_exports() -> anyhow::Result<()> {
+        let cx = init("import Data.List")?;
+        let exports = query_exports(&cx)?;
+        assert_eq!(None, exports);
+
+        let cx = init("module Foo.Bar where")?;
+        let exports = query_exports(&cx)?;
+        assert_eq!(None, exports);
+
+        let cx = init("module Foo.Bar () where")?;
+        let exports = query_exports(&cx)?;
+        assert_eq!(Some(vec![]), exports);
+
+        let cx = init("module Foo.Bar (Baz (..), qux) where")?;
+        let exports = query_exports(&cx)?;
+        assert_eq!(
+            Some(vec![Export { text: "Baz (..)" }, Export { text: "qux" }]),
+            exports
+        );
 
         Ok(())
     }
