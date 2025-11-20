@@ -40,8 +40,7 @@ struct Import {
     qualified: bool,
     alias: Option<&'static str>,
     hiding: bool,
-    // TODO: Rename this to something like "names" or whatever so when hiding it isn't confusing.
-    imports: Option<Vec<&'static str>>,
+    names: Option<Vec<&'static str>>,
 }
 
 fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
@@ -67,13 +66,13 @@ fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
                 }
                 "import_list" => {
                     let mut list_cursor = child.walk();
-                    let mut imports = Vec::new();
+                    let mut names = Vec::new();
                     for list_child in child.children(&mut list_cursor) {
                         if list_child.kind() == "import_name" {
-                            imports.push(node_text(cx, &list_child).unwrap());
+                            names.push(node_text(cx, &list_child).unwrap());
                         }
                     }
-                    import.imports = Some(imports);
+                    import.names = Some(names);
                 }
                 "hiding" => {
                     import.hiding = true;
@@ -193,7 +192,7 @@ mod tests {
                 qualified: false,
                 alias: None,
                 hiding: false,
-                imports: Some(vec!["FooData (..)", "fooFun1", "fooFun2"]),
+                names: Some(vec!["FooData (..)", "fooFun1", "fooFun2"]),
             },
             Import {
                 package: None,
@@ -201,7 +200,7 @@ mod tests {
                 qualified: false,
                 alias: None,
                 hiding: false,
-                imports: None,
+                names: None,
             },
             Import {
                 package: None,
@@ -209,7 +208,7 @@ mod tests {
                 qualified: false,
                 alias: None,
                 hiding: false,
-                imports: Some(vec![]),
+                names: Some(vec![]),
             },
             Import {
                 package: None,
@@ -217,7 +216,7 @@ mod tests {
                 qualified: true,
                 alias: None,
                 hiding: false,
-                imports: None,
+                names: None,
             },
             Import {
                 package: Some("qux"),
@@ -225,7 +224,7 @@ mod tests {
                 qualified: true,
                 alias: Some("Q"),
                 hiding: false,
-                imports: None,
+                names: None,
             },
             Import {
                 package: None,
@@ -233,7 +232,7 @@ mod tests {
                 qualified: false,
                 alias: None,
                 hiding: true,
-                imports: Some(vec!["id"]),
+                names: Some(vec!["id"]),
             },
         ];
         let actual_imports = query_imports(&cx)?;
