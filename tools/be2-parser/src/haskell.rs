@@ -38,7 +38,7 @@ struct Import {
     package: Option<&'static str>,
     module: &'static str,
     // qualified: bool,
-    // alias: Option<&'static str>,
+    alias: Option<&'static str>,
     // hiding: bool,
     // TODO: Distinguish `import Foo` from `import Foo ()`
     // TODO: Rename this to something like "names" or whatever so when hiding it isn't confusing.
@@ -60,6 +60,8 @@ fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
                 "module" => {
                     if import.module.is_empty() {
                         import.module = node_text(cx, &child).unwrap();
+                    } else {
+                        import.alias = Some(node_text(cx, &child).unwrap());
                     }
                 }
                 "import_list" => {
@@ -181,26 +183,31 @@ mod tests {
             Import {
                 package: None,
                 module: "Foo",
+                alias: None,
                 imports: vec!["FooData (..)", "fooFun1", "fooFun2"],
             },
             Import {
                 package: None,
                 module: "Bar",
+                alias: None,
                 imports: vec![],
             },
             Import {
                 package: None,
                 module: "Baz",
+                alias: None,
                 imports: vec![],
             },
             Import {
                 package: Some("\"qux\""),
                 module: "Qux",
+                alias: Some("Q"),
                 imports: vec![],
             },
             Import {
                 package: None,
                 module: "Prelude",
+                alias: None,
                 imports: vec!["id"],
             },
         ];
