@@ -110,22 +110,86 @@ fn query_explicit_exports(cx: &Context) -> anyhow::Result<Vec<Node<'_>>> {
 }
 
 #[derive(Serialize)]
+enum DeclarationKind {
+    /// data Foo = ...
+    Data,
+
+    /// newtype Foo = Foo ...
+    Newtype,
+
+    /// type Foo = ...
+    Type,
+
+    /// class Foo ...
+    Class,
+
+    /// type family Foo ...
+    TypeFamily,
+
+    /// foo x y = ...
+    Function,
+
+    /// x `foo` y = ...
+    FunctionInfix,
+
+    /// foo = ...
+    Bind,
+}
+
+#[derive(Serialize)]
 struct Declaration {
+    kind: DeclarationKind,
     text: &'static str,
 }
 
+// TODO: Parse nested declarations (e.g. associated type families, type class methods, etc).
 fn query_declarations(cx: &Context) -> anyhow::Result<Vec<Declaration>> {
-    let mut nodes = query_data_type(cx)?;
-    nodes.extend(query_newtype(cx)?);
-    nodes.extend(query_type_synonym(cx)?);
-    nodes.extend(query_class(cx)?);
-    nodes.extend(query_type_family(cx)?);
-    nodes.extend(query_function(cx)?);
-    nodes.extend(query_function_infix(cx)?);
-    nodes.extend(query_bind(cx)?);
-    let mut declarations = Vec::with_capacity(nodes.len());
-    for node in nodes {
+    let mut declarations = Vec::new();
+    for node in query_data_type(cx)? {
         declarations.push(Declaration {
+            kind: DeclarationKind::Data,
+            text: node_text(cx, &node).unwrap(),
+        });
+    }
+    for node in query_newtype(cx)? {
+        declarations.push(Declaration {
+            kind: DeclarationKind::Newtype,
+            text: node_text(cx, &node).unwrap(),
+        });
+    }
+    for node in query_type_synonym(cx)? {
+        declarations.push(Declaration {
+            kind: DeclarationKind::Type,
+            text: node_text(cx, &node).unwrap(),
+        });
+    }
+    for node in query_class(cx)? {
+        declarations.push(Declaration {
+            kind: DeclarationKind::Class,
+            text: node_text(cx, &node).unwrap(),
+        });
+    }
+    for node in query_type_family(cx)? {
+        declarations.push(Declaration {
+            kind: DeclarationKind::TypeFamily,
+            text: node_text(cx, &node).unwrap(),
+        });
+    }
+    for node in query_function(cx)? {
+        declarations.push(Declaration {
+            kind: DeclarationKind::Function,
+            text: node_text(cx, &node).unwrap(),
+        });
+    }
+    for node in query_function_infix(cx)? {
+        declarations.push(Declaration {
+            kind: DeclarationKind::FunctionInfix,
+            text: node_text(cx, &node).unwrap(),
+        });
+    }
+    for node in query_bind(cx)? {
+        declarations.push(Declaration {
+            kind: DeclarationKind::Bind,
             text: node_text(cx, &node).unwrap(),
         });
     }
