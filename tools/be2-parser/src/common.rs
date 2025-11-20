@@ -24,17 +24,20 @@ pub fn query<'a>(cx: &'a Context, query: &str) -> anyhow::Result<Vec<Node<'a>>> 
 pub fn query_structured<'a>(
     cx: &'a Context,
     query: &str,
-) -> anyhow::Result<Vec<HashMap<String, Node<'a>>>> {
+) -> anyhow::Result<Vec<HashMap<String, Vec<Node<'a>>>>> {
     let root_node = cx.tree.root_node();
     let query = tree_sitter::Query::new(&cx.language, query)?;
     let mut query_cursor = QueryCursor::new();
     let mut query_matches = query_cursor.matches(&query, root_node, cx.source_code.as_bytes());
     let mut results = Vec::with_capacity(query_matches.size_hint().0);
     while let Some(query_match) = query_matches.next() {
-        let mut match_map = HashMap::with_capacity(query_match.captures.len());
+        let mut match_map: HashMap<_, Vec<_>> = HashMap::with_capacity(query_match.captures.len());
         for capture in query_match.captures {
             let capture_name = query.capture_names()[capture.index as usize];
-            match_map.insert(capture_name.to_string(), capture.node);
+            match_map
+                .entry(capture_name.to_string())
+                .or_default()
+                .push(capture.node);
         }
         results.push(match_map);
     }

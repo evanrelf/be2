@@ -1,6 +1,6 @@
 #![allow(dead_code)] // TODO: Remove
 
-use crate::common::{Context, node_text, query, query_structured};
+use crate::common::{Context, node_text, query};
 use anyhow::Context as _;
 use serde::Serialize;
 use tree_sitter::{Node, Parser};
@@ -33,44 +33,47 @@ pub fn parse(cx: &Context) -> anyhow::Result<Haskell> {
     })
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Default, PartialEq, Serialize)]
 struct Import {
+    package: Option<&'static str>,
     module: &'static str,
-    imports: Option<&'static str>,
-    // TODO: Say whether qualified, and if as an alias
+    // qualified: bool,
+    // alias: Option<&'static str>,
+    // hiding: bool,
+    // TODO: Distinguish `import Foo` from `import Foo ()`
+    // TODO: Rename this to something like "names" or whatever so when hiding it isn't confusing.
+    imports: Vec<&'static str>,
 }
 
-// TODO: Is it possible to query for optional attributes? Or do I have to write a new query for
-// every variation?
 fn query_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
-    let mut imports = query_implicit_imports(cx)?;
-    imports.extend(query_explicit_imports(cx)?);
-    Ok(imports)
-}
-
-fn query_implicit_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
-    let nodes = query(cx, "(import module: (module) @module)")?;
+    let nodes = query(cx, "(import) @import")?;
     let mut imports = Vec::with_capacity(nodes.len());
     for node in nodes {
-        imports.push(Import {
-            module: node_text(cx, &node).unwrap(),
-            imports: None,
-        });
-    }
-    Ok(imports)
-}
-
-fn query_explicit_imports(cx: &Context) -> anyhow::Result<Vec<Import>> {
-    let nodes = query_structured(
-        cx,
-        "(import module: (module) @module names: (import_list) @imports)",
-    )?;
-    let mut imports = Vec::with_capacity(nodes.len());
-    for node in nodes {
-        imports.push(Import {
-            module: node_text(cx, &node["module"]).unwrap(),
-            imports: Some(node_text(cx, &node["imports"]).unwrap()),
-        });
+        let mut import = Import::default();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                // TODO: Strip double quotes surrounding package name
+                "import_package" => {
+                    import.package = Some(node_text(cx, &child).unwrap());
+                }
+                "module" => {
+                    if import.module.is_empty() {
+                        import.module = node_text(cx, &child).unwrap();
+                    }
+                }
+                "import_list" => {
+                    let mut list_cursor = child.walk();
+                    for list_child in child.children(&mut list_cursor) {
+                        if list_child.kind() == "import_name" {
+                            import.imports.push(node_text(cx, &list_child).unwrap());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        imports.push(import);
     }
     Ok(imports)
 }
@@ -156,4 +159,53 @@ fn query_function_infix(cx: &Context) -> anyhow::Result<Vec<Node<'_>>> {
 
 fn query_bind(cx: &Context) -> anyhow::Result<Vec<Node<'_>>> {
     query(cx, "(haskell (declarations (bind name: (_) @bind)))")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_query_imports() -> anyhow::Result<()> {
+        use pretty_assertions::assert_eq;
+        let cx = init(
+            r#"
+            import Foo (FooData (..), fooFun1, fooFun2)
+            import Bar ()
+            import qualified Baz
+            import "qux" Qux qualified as Q
+            import Prelude hiding (id)
+            "#,
+        )?;
+        let expected_imports = vec![
+            Import {
+                package: None,
+                module: "Foo",
+                imports: vec!["FooData (..)", "fooFun1", "fooFun2"],
+            },
+            Import {
+                package: None,
+                module: "Bar",
+                imports: vec![],
+            },
+            Import {
+                package: None,
+                module: "Baz",
+                imports: vec![],
+            },
+            Import {
+                package: Some("\"qux\""),
+                module: "Qux",
+                imports: vec![],
+            },
+            Import {
+                package: None,
+                module: "Prelude",
+                imports: vec!["id"],
+            },
+        ];
+        let actual_imports = query_imports(&cx)?;
+        assert_eq!(expected_imports, actual_imports);
+        Ok(())
+    }
 }

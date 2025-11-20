@@ -36,8 +36,11 @@ fn main() -> anyhow::Result<()> {
                 let mut output = Vec::with_capacity(match_maps.len());
                 for match_map in match_maps {
                     let mut entry = HashMap::with_capacity(match_map.len());
-                    for (capture_name, node) in match_map {
-                        entry.insert(capture_name, node_text(&cx, &node));
+                    for (capture_name, nodes) in match_map {
+                        let texts: Vec<_> = nodes.iter()
+                            .map(|node| node_text(&cx, node))
+                            .collect();
+                        entry.insert(capture_name, texts);
                     }
                     output.push(entry);
                 }
