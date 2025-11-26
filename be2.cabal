@@ -49,6 +49,7 @@ library
     , annotated-exception
     , bytestring
     , constraints
+    , filepath
     , optparse-applicative
     , resourcet
     , serialise
