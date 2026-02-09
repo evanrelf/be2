@@ -9,11 +9,12 @@ module Be.Format
   )
 where
 
+import Be.Tasks
 import Beget.Build
 import Data.ByteString qualified as ByteString
-import Data.ByteString.Char8 qualified as Char8
 import Data.ByteString.Lazy qualified as LByteString
 import Data.Set qualified as Set
+import Data.Yaml qualified as Yaml
 import Database.SQLite.Simple qualified as SQLite
 import Options.Applicative qualified as Options
 import Prelude hiding (readFile, stderr, stdin, stdout)
@@ -22,7 +23,6 @@ import System.Exit (ExitCode (..))
 import System.FilePath ((</>))
 import System.Process.Typed qualified as Process
 import UnliftIO.Async qualified as Async
-import UnliftIO.IO qualified as IO
 import UnliftIO.IO.File qualified as IO
 
 data Options = Options
@@ -85,53 +85,31 @@ parser = Options.info parse info
 
     pure Options{ command }
 
-readFile :: MonadIO m => FilePath -> m LByteString
-readFile path = liftIO do
-  IO.withBinaryFile path IO.ReadMode \handle ->
-    LByteString.hGetContents handle
-
-exec :: MonadIO m => FilePath -> [String] -> m LByteString
-exec program args = Process.readProcessStdout_ config
-  where config = Process.proc program args
-
-gitRoot :: Build FilePath
-gitRoot = do
-  pathBytes <- exec "git" ["rev-parse", "--show-toplevel"]
-  let path = decodeUtf8 (Char8.strip (toStrict pathBytes))
-  pure path
-
-registerTaskVolatile 'gitRoot
-
-which :: String -> Build FilePath
-which name = do
-  initialPathBytes <- exec "which" [name]
-  let initialPath = decodeUtf8 (Char8.strip (toStrict initialPathBytes))
-  realPathBytes <- exec "realpath" [initialPath]
-  let realPath = decodeUtf8 (Char8.strip (toStrict realPathBytes))
-  pure realPath
-
-registerTaskVolatile 'which
-
--- TODO: Place copy in consistent location (e.g. `~/.cache/be2/fourmolu-<hash>.yaml`).
--- TODO: Register temporary file as resource to be cleaned up at end of program.
 fourmoluConfig :: Build FilePath
 fourmoluConfig = do
   root <- realize GitRoot
-  let path = root </> "fourmolu.yaml"
-  pure undefined
+  pure (root </> "fourmolu.yaml")
 
 registerTaskVolatile 'fourmoluConfig
 
 fourmoluExtensions :: Build (Set String)
 fourmoluExtensions = do
-  undefined
+  root <- realize GitRoot
+  let path = root </> "hpack-common" </> "default-extensions.yaml"
+  bytes <- readFile path
+  case Yaml.decodeEither' (toStrict bytes) of
+    Left err -> error $ "Failed to parse " <> toText path <> ": " <> show err
+    Right val ->
+      case Yaml.parseMaybe parseExtensions val of
+        Nothing -> error $ "Missing `default-extensions` key in " <> toText path
+        Just exts -> pure (Set.fromList exts)
+  where
+  parseExtensions :: Yaml.Value -> Yaml.Parser [String]
+  parseExtensions = Yaml.withObject "extensions" \o ->
+    o Yaml..: "default-extensions"
 
 registerTaskVolatile 'fourmoluExtensions
 
--- TODO: Canonicalize path.
--- TODO: Sandbox process.
--- TODO: Use process permits.
--- TODO: Use file permits.
 fourmolu :: FilePath -> LByteString -> Build LByteString
 fourmolu path bytes = do
   binary <- realize Which "fourmolu"
@@ -147,9 +125,7 @@ fourmolu path bytes = do
         , "--quiet"
         ] <> map ("--ghc-opt=-X" <>) (Set.toList extensions)
   (exitCode, stdout, stderr) <- Process.readProcess $
-      Process.proc binary args
-    & Process.setEnv []
-    & Process.setWorkingDir "/var/empty"
+      sandboxConfig fourmoluProfile binary args
     & Process.setStdin (Process.byteStringInput bytes)
   case exitCode of
     ExitFailure code -> error . unlines $
@@ -172,6 +148,34 @@ formatHaskellInPlace path = do
 
 registerTaskVolatile 'formatHaskellInPlace
 
+nixfmt :: FilePath -> LByteString -> Build LByteString
+nixfmt path bytes = do
+  binary <- realize Which "nixfmt"
+  let args = ["--filename=" <> path, "-"]
+  (exitCode, stdout, stderr) <- Process.readProcess $
+      sandboxConfig nixfmtProfile binary args
+    & Process.setStdin (Process.byteStringInput bytes)
+  case exitCode of
+    ExitFailure code -> error . unlines $
+      [ "`nixfmt` exited with code " <> show code <> ":"
+      , decodeUtf8 stderr
+      ]
+    ExitSuccess -> pure stdout
+
+registerTask 'nixfmt
+
+formatNixInPlace :: FilePath -> Build Bool
+formatNixInPlace path = do
+  unformattedBytes <- readFile path
+  formattedBytes <- realize Nixfmt path unformattedBytes
+  if unformattedBytes == formattedBytes then
+    pure False
+  else do
+    IO.writeBinaryFileAtomic path (toStrict formattedBytes)
+    pure True
+
+registerTaskVolatile 'formatNixInPlace
+
 runHaskell :: HaskellOptions -> Build ()
 runHaskell options = do
   case options.input of
@@ -180,15 +184,27 @@ runHaskell options = do
       output <- realize Fourmolu "/dev/stdin" (toLazy input)
       liftIO $ LByteString.putStr output
     Nothing -> do
-      -- TODO: Use changed paths from Git.
-      error "not yet implemented"
+      paths <- realize ChangedHaskellFiles
+      Async.forConcurrently_ paths \path ->
+        formatHaskellInPlace path
     Just (Paths paths) -> do
       Async.forConcurrently_ paths \path -> do
         formatHaskellInPlace path
 
 runNix :: NixOptions -> Build ()
-runNix _options = do
-  pure ()
+runNix options = do
+  case options.input of
+    Just Stdin -> do
+      input <- liftIO ByteString.getContents
+      output <- realize Nixfmt "/dev/stdin" (toLazy input)
+      liftIO $ LByteString.putStr output
+    Nothing -> do
+      paths <- realize ChangedNixFiles
+      Async.forConcurrently_ paths \path ->
+        formatNixInPlace path
+    Just (Paths paths) -> do
+      Async.forConcurrently_ paths \path ->
+        formatNixInPlace path
 
 run :: Options -> IO ()
 run options = do

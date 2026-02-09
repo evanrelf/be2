@@ -48,10 +48,15 @@ library
     , annotated-exception
     , beget
     , bytestring
+    , containers
+    , directory
     , filepath
+    , hashable
     , optparse-applicative
     , resourcet
+    , serialise
     , sqlite-simple
+    , string-interpolate
     , template-haskell
     , typed-process
     , unliftio
@@ -61,6 +66,7 @@ library
     , Be
     , Be.Format
     , Be.Lint
+    , Be.Tasks
 
 executable be2
   import:
