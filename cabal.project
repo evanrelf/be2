@@ -4,4 +4,4 @@ tests: True
 source-repository-package
   type: git
   location: https://github.com/evanrelf/beget.git
-  tag: 5b397f273b9a70a42d72ae76ff31ed0131b6ac9f
+  tag: 01a51b06837fee0f892ec10fd3d231e0956b8a21

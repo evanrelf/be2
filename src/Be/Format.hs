@@ -1,7 +1,6 @@
 {-# LANGUAGE ApplicativeDo #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Be.Format
   ( Options (..)
@@ -11,7 +10,6 @@ module Be.Format
 where
 
 import Beget.Build
-import UnliftIO (MonadUnliftIO (..))
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Char8 qualified as Char8
 import Data.ByteString.Lazy qualified as LByteString
@@ -26,8 +24,6 @@ import System.Process.Typed qualified as Process
 import UnliftIO.Async qualified as Async
 import UnliftIO.IO qualified as IO
 import UnliftIO.IO.File qualified as IO
-
-deriving newtype instance MonadUnliftIO Build
 
 data Options = Options
   { command :: Maybe Command
