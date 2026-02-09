@@ -44,33 +44,21 @@ library
   import: common
   hs-source-dirs: src
   build-depends:
-    , ChibiHash
     , aeson
     , annotated-exception
+    , beget
     , bytestring
-    , constraints
     , filepath
     , optparse-applicative
     , resourcet
-    , serialise
-    , some-dict-of
     , sqlite-simple
-    , string-interpolate
     , template-haskell
     , typed-process
     , unliftio
-    , varargs
     , xdg-basedir
     , yaml
   exposed-modules:
     , Be
-    , Be.Core.Build
-    , Be.Core.Build.Dynamic
-    , Be.Core.Build.Static
-    , Be.Core.Hash
-    , Be.Core.Registry
-    , Be.Core.Trace
-    , Be.Core.Value
     , Be.Format
     , Be.Lint
 
@@ -89,17 +77,7 @@ test-suite test
   main-is: Driver.hs
   hs-source-dirs: test
   build-depends:
-    , annotated-exception
     , be2
-    , hedgehog
-    , serialise
-    , sqlite-simple
     , tasty
     , tasty-discover
-    , tasty-hedgehog
     , tasty-hunit
-    , unliftio
-  other-modules:
-    Be.Core.Build.DynamicTest
-    Be.Core.Build.StaticTest
-    Be.Core.TraceTest

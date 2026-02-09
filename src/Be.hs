@@ -3,8 +3,8 @@
 
 module Be (main) where
 
-import Be.Core.Build (Task, initBuild)
-import Be.Core.Value (Value)
+import Beget.Build (Task, initBuild)
+import Beget.Value (Value)
 import Be.Format qualified as Format
 import Be.Lint qualified as Lint
 import Options.Applicative qualified as Options
