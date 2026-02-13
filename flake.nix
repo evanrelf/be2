@@ -2,6 +2,10 @@
   description = "be2";
 
   inputs = {
+    beget = {
+      url = "github:evanrelf/beget";
+      flake = false;
+    };
     flake-parts = {
       url = "github:hercules-ci/flake-parts";
       inputs.nixpkgs-lib.follows = "nixpkgs";
@@ -32,7 +36,9 @@
 
           be2 =
             pkgs.haskell.lib.justStaticExecutables
-              (pkgs.haskellPackages.callCabal2nix "be2" ./. { });
+              (pkgs.haskellPackages.callCabal2nix "be2" ./. {
+                inherit (config.packages) beget;
+              });
 
           be2-parser =
             pkgs.rustPlatform.buildRustPackage (attrs: {
@@ -40,6 +46,9 @@
               src = ./tools/be2-parser;
               cargoLock.lockFile = "${attrs.src}/Cargo.lock";
             });
+
+          beget =
+            pkgs.haskellPackages.callCabal2nix "beget" inputs.beget { };
         };
 
         devShells.default =
